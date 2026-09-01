@@ -11,6 +11,22 @@ dato**: quién accede a qué, quién movió qué, y todo en **tu propio servidor
 
 ---
 
+## Capturas
+
+**Panel de administración** — un vistazo a toda la organización de un golpe:
+
+![Panel de administración de Hylanlock](capturas/admin.png)
+
+**Un departamento** — los archivos, con permisos separados por acción:
+
+![Vista de un departamento](capturas/departamento.png)
+
+**Auditoría** — quién movió qué y a quién se le denegó, con filtros (y exportable a CSV):
+
+![Registro de auditoría de Hylanlock](capturas/auditoria.png)
+
+---
+
 ## Qué resuelve
 
 El correo, la nube o el disco compartido valen para muchos casos. Pero algunas organizaciones necesitan
