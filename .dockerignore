@@ -1,0 +1,20 @@
+# No meter en la imagen datos, temporales ni artefactos locales.
+app/data/
+app/_tdata/
+app/**/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+# Bases de datos y secretos que se generan en tiempo de ejecución (van en el volumen /data)
+*.db
+*.db-wal
+*.db-shm
+.session_secret
+**/.session_secret
+# Varios
+*.bak
+.git/
+.gitignore
+DESPLIEGUE.md
+cosillas.md
+.env

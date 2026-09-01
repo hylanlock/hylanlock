@@ -1,0 +1,47 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Hylanlock — despliegue self-hosted con Docker Compose.
+#
+#   1) cp .env.example .env   (y rellena tus valores: contraseña admin, red LAN…)
+#   2) docker compose up -d --build
+#   3) abre  http://IP-DEL-SERVIDOR:8000  y entra con el admin
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  hylanlock:
+    build:
+      context: .
+      args:
+        # La librería de AD/LDAP se instala SOLA si activas AD en el .env. Antes había que
+        # acordarse de '--build-arg WITH_LDAP=1' en cada reconstrucción: quien hiciera un
+        # 'docker compose up -d --build' normal se quedaba sin AD y sin enterarse.
+        WITH_LDAP: ${HYLANLOCK_LDAP_ENABLED:-0}
+    image: hylanlock:latest
+    container_name: hylanlock
+    restart: unless-stopped
+
+    # ── RED LOCAL (importante) ──────────────────────────────────────────────
+    # 'host' hace que el contenedor vea la IP REAL de cada equipo de la red.
+    # Es IMPRESCINDIBLE para el aislamiento por departamento (el candado que
+    # distingue quién está en la LAN). Recomendado en servidores Linux.
+    network_mode: host
+
+    env_file: .env
+    environment:
+      HYLANLOCK_DATA_DIR: /data      # los datos siempre en el volumen
+
+    volumes:
+      - hylanlock_data:/data
+      # ALTERNATIVA — guardar los datos en una carpeta del host (backups directos).
+      # Comenta la línea de arriba y descomenta esta. La carpeta debe ser escribible
+      # por el UID 10001 (ej.:  sudo chown -R 10001:10001 ./data).
+      # - ./data:/data
+
+    # ── Alternativa SIN host networking (p.ej. Docker Desktop en Windows/Mac) ──
+    # Si tu entorno no soporta 'network_mode: host', coméntalo y descomenta esto.
+    # ⚠️ En modo puente el contenedor puede ver la IP de la pasarela de Docker en
+    # vez de la del cliente: el candado LAN podría no distinguir bien local/remoto.
+    # Revisa HYLANLOCK_LAN_CIDR con cuidado en ese caso.
+    # ports:
+    #   - "${HYLANLOCK_PORT:-8000}:8000"
+
+volumes:
+  hylanlock_data:

@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Perfil HTTPS — añade Caddy (reverse proxy TLS) delante de Hylanlock.
+#
+# Se usa JUNTO al compose normal, como capa que lo modifica:
+#     docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+#
+# Qué cambia respecto al despliegue HTTP normal:
+#   · Hylanlock deja de escuchar en todas las interfaces y se ata a 127.0.0.1,
+#     de modo que SOLO Caddy puede hablarle (nadie salta el cifrado).
+#   · Hylanlock confía en Caddy como proxy, así conserva la IP real del cliente
+#     (el candado LAN sigue funcionando) leyendo X-Forwarded-For.
+#   · Caddy publica el 443 (HTTPS) y el 80 (redirige a HTTPS).
+#
+# Antes de levantar: edita el nombre en el Caddyfile.  Guía completa en HTTPS.md.
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  hylanlock:
+    environment:
+      HYLANLOCK_BIND: 127.0.0.1               # solo el proxy local le habla
+      HYLANLOCK_TRUSTED_PROXIES: 127.0.0.1/32 # confiar en Caddy para leer la IP real
+      HYLANLOCK_BEHIND_TLS: "1"               # se sirve por HTTPS: cookie Secure + HSTS
+
+  caddy:
+    image: caddy:2
+    container_name: hylanlock-caddy
+    restart: unless-stopped
+    environment:
+      # El Caddyfile lo usa para saber a qué puerto hablarle a Hylanlock.
+      HYLANLOCK_PORT: ${HYLANLOCK_PORT:-8000}
+    # host: Caddy ve la IP real de cada cliente de la LAN y se la pasa a Hylanlock.
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # aquí vive la CA interna y los certificados: NO borrar
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

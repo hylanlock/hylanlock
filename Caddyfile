@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Caddyfile — HTTPS de fábrica para Hylanlock (red local).
+#
+# Caddy se pone DELANTE de Hylanlock: cifra el tráfico (HTTPS) y le pasa las
+# peticiones. Hylanlock escucha solo en 127.0.0.1, así nadie puede saltarse el
+# cifrado hablándole directamente.
+#
+# 1) Cambia  hylanlock.empresa.local  por el nombre con el que accederéis
+#    (tiene que resolver a la IP del servidor: DNS interno o el archivo hosts).
+# 2) Levanta con:
+#      docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+# ─────────────────────────────────────────────────────────────────────────────
+
+hylanlock.empresa.local {
+
+	# CERTIFICADO. Por defecto, CA interna de Caddy: cifra sin configurar nada.
+	# Los navegadores avisarán hasta que instaléis la CA de Caddy en los equipos
+	# (se explica en HTTPS.md) o aceptéis la excepción una vez.
+	tls internal
+
+	# ── ALTERNATIVA: certificado propio de la empresa (sin avisos) ──
+	# Comenta la línea de arriba y descomenta esta, con vuestros ficheros:
+	#   tls /etc/caddy/cert.pem /etc/caddy/key.pem
+
+	# Pasa las peticiones a Hylanlock (atado a localhost). Caddy añade
+	# automáticamente X-Forwarded-For y X-Forwarded-Proto, que Hylanlock usa
+	# para conocer la IP real del cliente (candado LAN) porque confía en el proxy.
+	#
+	# El puerto se toma de HYLANLOCK_PORT (vuestro .env), con 8000 por defecto: así
+	# NO hay que tocar dos sitios. Antes estaba a fuego, y si cambiabais el puerto de
+	# Hylanlock, Caddy seguía sirviendo por HTTPS lo que hubiera en el 8000 — otra
+	# aplicación, si la había. Fallaba abierto en vez de fallar cerrado.
+	reverse_proxy 127.0.0.1:{$HYLANLOCK_PORT:8000}
+}

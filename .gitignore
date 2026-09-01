@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Hylanlock — .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ⛔ SECRETO CRÍTICO: clave privada de firma de licencias. NUNCA subir a ningún sitio.
+# Quien tenga esta clave puede emitir licencias válidas de Hylanlock.
+tools/hylanlock_license_private.key
+*_private.key
+*.private
+# El EMISOR de licencias (tools/) es interno: solo lo usa Nicolás para firmar licencias. No se
+# publica en el repo (doble protección de la clave). La VERIFICACIÓN sí es pública (app/license.py).
+tools/
+
+# Datos, secretos y temporales generados en tiempo de ejecución
+app/data/
+app/_tdata/
+**/__pycache__/
+*.pyc
+*.pyo
+.session_secret
+**/.session_secret
+*.db
+*.db-wal
+*.db-shm
+# Variables de entorno con secretos. Se PUBLICA solo el .env.example (plantilla sin secretos).
+.env
+.env.local
+.env.*.local
+**/.env.local
+**/.env.*.local
+
+# Web (Next.js)
+WEB/node_modules/
+WEB/.next/
+WEB/out/
+
+# La web/landing (marketing) NO va en el repo del PRODUCTO: vive en Vercel, es otra cosa.
+WEB/
+
+# Notas y guías INTERNAS (no son documentación de producto): no se publican.
+cosillas.md
+PRUEBA-AD-WINDOWS.md
+
+# Varios
+*.bak
+
+# Paquete generado del agente (se reconstruye con agente/empaquetar.py)
+agente/dist/
+
+# Release empaquetado (se regenera con tools/empaquetar-release.py)
+dist-release/
