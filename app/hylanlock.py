@@ -52,6 +52,9 @@ BIND = _env("BIND", "0.0.0.0")
 # Pista explícita de que se sirve por HTTPS (perfil Caddy): activa la cookie 'Secure' y HSTS. Además
 # se detecta por 'X-Forwarded-Proto: https' del proxy de confianza. Por defecto 0 (LAN por HTTP).
 BEHIND_TLS = _env("BEHIND_TLS", "0").strip().lower() in ("1", "true", "yes")
+# Enlace de feedback que el producto MUESTRA (no envía nada él mismo: el admin hace clic y rellena en
+# su navegador, así no se rompe la promesa de "nada sale de tu red"). Vacío = no mostrar el aviso.
+FEEDBACK_URL = _env("FEEDBACK_URL", "https://hylanlock.vercel.app/feedback")
 ORG_NAME = _env("ORG_NAME", "Hylanlock")     # nombre de la organización (etiqueta en la UI)
 # ── Marca blanca (branding por instalación) ─────────────────────────────────────────
 BRAND_NAME = _env("BRAND_NAME", "Hylanlock")  # nombre visible del producto en la interfaz
@@ -1458,12 +1461,20 @@ class Handler(BaseHTTPRequestHandler):
         detail = {license.EXPIRED: f"Caducó el {st.get('expires')}.",
                   license.MISSING: "No hay ninguna licencia instalada.",
                   license.INVALID: "La licencia instalada no es válida."}.get(st["status"], "")
+        # Al terminar una PRUEBA (expired), invita a dar feedback. El producto no envía nada: solo
+        # muestra un enlace; el admin rellena en su navegador (no se rompe "nada sale de tu red").
+        pedir_feedback = st["status"] == license.EXPIRED and bool(FEEDBACK_URL)
+        fb_btn = (f'<a class="btn2" href="{html.escape(FEEDBACK_URL)}" target="_blank" rel="noopener">'
+                  '💬 Contar mi experiencia</a>') if pedir_feedback else ""
+        fb_msg = (" <br><br>¿Has probado Hylanlock estos días? <b>Tu opinión honesta —lo bueno y lo "
+                  "malo— me ayuda muchísimo a mejorarlo.</b> Son 2 minutos.") if pedir_feedback else ""
         if self._is_admin():
             return render_blocked(
                 "Licencia caducada o no activa",
                 "El servicio está bloqueado, pero <b>tus datos están intactos</b>. Renueva la "
-                "licencia para reactivarlo; puedes exportar tus datos en cualquier momento.",
+                "licencia para reactivarlo; puedes exportar tus datos en cualquier momento." + fb_msg,
                 detail,
+                fb_btn +
                 '<a class="btn2" href="/admin/licencia">🪪 Ver / renovar licencia</a>'
                 '<a class="btn2" href="/admin/export">📦 Exportar datos</a>'
                 '<a class="btn2" href="/logout">🚪 Cerrar sesión</a>')
