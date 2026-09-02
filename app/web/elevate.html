@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylanlock · Confirmar identidad</title>
+  <style>
+    __CSS__
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="logo">🔐</div>
+      <div>
+        <h1>Confirma tu identidad</h1>
+        <div class="sub">Vuelve a introducir tu contraseña para entrar en administración</div>
+      </div>
+    </div>
+    <span class="badge"><span class="dot"></span> Acción protegida</span>
+    <form method="POST" action="/elevate">
+      <input type="hidden" name="next" value="__NEXT__">
+      <input type="password" name="password" placeholder="Tu contraseña" autofocus
+        autocomplete="current-password">
+      __ERR__
+      <button type="submit">Confirmar</button>
+    </form>
+    <div class="sub" style="margin-top:16px;text-align:center">
+      <a href="/departamentos" style="color:var(--muted);text-decoration:none">Cancelar</a>
+    </div>
+  </div>
+</body>
+
+</html>

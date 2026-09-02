@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylanlock · Licencia</title>
+  <style>
+    __CSS__
+    .kv { margin-top: var(--sp-4); border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; }
+    .kv .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px;
+      font-size: .9rem; border-top: 1px solid var(--border); }
+    .kv .row:first-child { border-top: none; }
+    .kv .k { color: var(--muted); }
+    .kv .v { color: var(--text); font-weight: 600; text-align: right; word-break: break-word; }
+    .state { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; padding: 4px 12px;
+      border-radius: var(--radius-pill); font-size: .8rem; }
+    .state.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); }
+    .state.err { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--err) 32%, transparent); }
+    textarea { width: 100%; margin-top: var(--sp-3); min-height: 110px; padding: 12px 14px;
+      border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface-2);
+      color: var(--text); font-family: var(--mono); font-size: .82rem; resize: vertical; }
+    textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+    .ok-msg { margin-top: var(--sp-4); color: var(--ok); font-size: .88rem; text-align: center; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="logo">🪪</div>
+      <div>
+        <h1>Licencia</h1>
+        <div class="sub">Estado y activación de tu licencia de Hylanlock</div>
+      </div>
+    </div>
+    <div style="margin-top:16px"><span class="state __STATUS_CLS__">● __STATUS__</span></div>
+    <div class="kv">
+      <div class="row"><span class="k">Empresa</span><span class="v">__CUSTOMER__</span></div>
+      <div class="row"><span class="k">Tipo</span><span class="v">__TYPE__</span></div>
+      <div class="row"><span class="k">Caduca</span><span class="v">__EXPIRES__</span></div>
+      <div class="row"><span class="k">Vigencia</span><span class="v">__DAYS__</span></div>
+    </div>
+
+    <h2 class="sec">Instalar / renovar licencia</h2>
+    __ERR__
+    __OK__
+    <form method="POST" action="/admin/licencia">
+      <textarea name="license" placeholder="Pega aquí el texto de tu licencia (license.key)…" spellcheck="false"></textarea>
+      <button type="submit">Instalar licencia</button>
+    </form>
+    <div class="sub" style="margin-top:12px;font-size:.8rem">
+      También puedes colocar el archivo <code>license.key</code> en la carpeta de datos del servidor.
+    </div>
+    <div style="margin-top:18px;text-align:center;font-size:.82rem">
+      <a href="/admin/export" style="color:var(--muted);text-decoration:none">📦 Exportar datos</a>
+      <span style="color:var(--faint)"> · </span>
+      <a href="/" style="color:var(--muted);text-decoration:none">⬅️ Inicio</a>
+      <span style="color:var(--faint)"> · </span>
+      <a href="/logout" style="color:var(--muted);text-decoration:none">🚪 Cerrar sesión</a>
+    </div>
+  </div>
+</body>
+
+</html>

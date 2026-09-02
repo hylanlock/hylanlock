@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylanlock · Activar cuenta</title>
+  <style>
+    __CSS__
+    .hide { display: none !important; }
+    .pwrow { display: flex; gap: 8px; align-items: center; }
+    .pwrow input { flex: 1; }
+    .genbtn { margin-top: var(--sp-4); width: auto; padding: 14px 13px; white-space: nowrap;
+      background: var(--surface-2); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
+    .genbtn:hover { background: var(--surface-3); filter: none; box-shadow: none; }
+    .okmsg { margin-top: var(--sp-4); color: var(--ok); font-size: .88rem; text-align: center; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="logo">🔐</div>
+      <div>
+        <h1>Activa tu cuenta</h1>
+        <div class="sub">Crea tu contraseña para empezar a usar Hylanlock</div>
+      </div>
+    </div>
+    <span class="badge"><span class="dot"></span> Enlace de un solo uso · red local</span>
+    __ERR__
+    <form method="POST" action="/activar" id="af" class="__FORMCLS__">
+      <input type="hidden" name="token" value="__TOKEN__">
+      <div class="sub" style="margin-top:16px">Cuenta: <b>__USERNAME__</b></div>
+      <div class="pwrow">
+        <input type="password" name="password" id="p1" placeholder="Tu nueva contraseña" autofocus
+          autocomplete="new-password" minlength="__MINLEN__">
+        <button type="button" class="genbtn" onclick="sugerir()">🔑 Sugerir</button>
+      </div>
+      <input type="password" name="password2" id="p2" placeholder="Repite la contraseña"
+        autocomplete="new-password" minlength="6">
+      <div class="okmsg hide" id="hint"></div>
+      <button type="submit">Activar cuenta</button>
+    </form>
+    <div class="sub __FORMCLS__" style="margin-top:14px;text-align:center;font-size:.8rem">
+      Tu administrador nunca verá esta contraseña: solo la conoces tú.
+    </div>
+    <div style="margin-top:16px;text-align:center">
+      <a href="/login" style="color:var(--muted);text-decoration:none;font-size:.85rem">Ir al inicio de sesión</a>
+    </div>
+  </div>
+  <script>
+    function sugerir() {
+      const set = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*?+-=';
+      const a = new Uint32Array(16); crypto.getRandomValues(a);
+      let out = ''; for (let i = 0; i < 16; i++) out += set[a[i] % set.length];
+      document.getElementById('p1').value = out;
+      document.getElementById('p2').value = out;
+      const h = document.getElementById('hint');
+      h.textContent = '⚠️ Copia esta contraseña ahora: ' + out;
+      h.classList.remove('hide');
+    }
+  </script>
+</body>
+
+</html>

@@ -35,7 +35,9 @@ WEB/.next/
 WEB/out/
 
 # La web/landing (marketing) NO va en el repo del PRODUCTO: vive en Vercel, es otra cosa.
-WEB/
+# OJO: con barra inicial (/WEB/) para anclarlo a la RAÍZ. Sin ella, "WEB/" también excluía
+# app/web/ (las plantillas del producto) en sistemas insensibles a mayúsculas (Windows). Bug real.
+/WEB/
 
 # Notas y guías INTERNAS (no son documentación de producto): no se publican.
 cosillas.md

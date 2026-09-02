@@ -1,0 +1,162 @@
+<!-- Fragmento de contenido: MI PERFIL. Lo envuelve layout.html (shell + sidebar). -->
+<style>
+  .prole { margin-top: 18px; display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+    border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+  .prole .av { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
+    background: var(--accent-grad); color: #fff; font-size: 22px; flex: none; }
+  .prole .who { font-weight: 750; color: var(--text); }
+  .prole .rl { font-size: .82rem; color: var(--muted); margin-top: 2px; }
+  .plist { margin-top: 12px; display: flex; flex-direction: column; gap: 9px; }
+  .reqbtn { margin: 0; width: auto; padding: 7px 13px; font-size: .82rem; border-radius: 9px;
+    font-weight: 700; white-space: nowrap; }
+  .reqbtn:disabled { opacity: .55; }
+  .rtag { font-size: .74rem; color: var(--muted); white-space: nowrap; }
+</style>
+
+<div class="content-head">
+  <div class="logo">👤</div>
+  <div>
+    <h1>Mi perfil</h1>
+    <div class="sub">Tus permisos y acceso a departamentos</div>
+  </div>
+</div>
+
+<div class="prole">
+  <div class="av" id="p-av">👤</div>
+  <div>
+    <div class="who" id="p-user">…</div>
+    <div class="rl" id="p-role">…</div>
+  </div>
+</div>
+
+<h2 class="sec">Mis departamentos</h2>
+<div class="plist" id="mine"><div class="empty">Cargando…</div></div>
+
+<div id="request-section" style="display:none">
+  <h2 class="sec">Solicitar acceso a un departamento</h2>
+  <div class="sub" style="margin-top:6px">Pide acceso a un departamento; un administrador lo aprobará.</div>
+  <div class="plist" id="available"></div>
+</div>
+
+<h2 class="sec">💻 Equipos sincronizados</h2>
+<div class="sub" style="margin-top:6px">
+  Da de alta un equipo para que el <b>agente de Hylanlock</b> se traiga solo tus archivos a él.
+  El token se muestra <b>una única vez</b>: cópialo entonces. Si pierdes el equipo, revócalo aquí —
+  tu contraseña no se ve afectada.
+</div>
+<div class="genout" style="margin-top:10px">
+  <input type="text" id="tk-name" placeholder="ej: Portátil de la oficina" autocomplete="off">
+  <button class="mini" onclick="nuevoToken()">➕ Dar de alta</button>
+</div>
+<div id="tk-new" style="display:none;margin-top:10px" class="notice-box">
+  <b>⚠️ Cópialo ahora: no se volverá a mostrar.</b>
+  <div class="genout" style="margin-top:8px">
+    <input type="text" id="tk-value" readonly>
+    <button class="mini" onclick="copiaToken()">📋 Copiar</button>
+  </div>
+</div>
+<div class="plist" id="tokens"><div class="empty">Cargando…</div></div>
+
+<style>
+  .notice-box { background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    border-radius: 13px; padding: 12px 15px; font-size: .86rem; color: var(--text); }
+</style>
+<script>
+  const ROLE_LBL = {
+    admin: 'Administrador · acceso total',
+    head: 'Jefe / Director · acceso a todos los departamentos',
+    member: 'Miembro'
+  };
+  const DEP_ROLE = { all: 'Acceso total', head: 'Jefe de departamento', member: 'Miembro' };
+  function esc(s) { return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  async function load() {
+    let p;
+    try { p = await (await fetch('/api/perfil')).json(); } catch (e) { return; }
+    document.getElementById('p-user').textContent = p.username;
+    document.getElementById('p-role').textContent = ROLE_LBL[p.role] || p.role;
+    document.getElementById('p-av').textContent = p.role === 'admin' ? '🛠️' : (p.role === 'head' ? '👑' : '👤');
+
+    const mine = document.getElementById('mine');
+    mine.innerHTML = p.mine.length
+      ? p.mine.map(d => `<div class="frow"><span class="fic">🏢</span>
+          <span class="fn">${esc(d.name)}</span>
+          <span class="rtag">${DEP_ROLE[d.role] || 'Miembro'}</span></div>`).join('')
+      : '<div class="empty">Aún no perteneces a ningún departamento.</div>';
+
+    // Solicitar acceso: solo si no tienes acceso global y hay departamentos disponibles.
+    if (!p.global_access && p.available.length) {
+      document.getElementById('request-section').style.display = 'block';
+      const box = document.getElementById('available');
+      box.innerHTML = p.available.map(d => {
+        const pend = p.pending.includes(d.slug);
+        const btn = pend
+          ? '<span class="rtag">⏳ Solicitud pendiente</span>'
+          : `<button class="reqbtn" onclick="solicitar('${esc(d.slug)}', this)">🙋 Solicitar</button>`;
+        return `<div class="frow"><span class="fic">🏢</span>
+          <span class="fn">${esc(d.name)}</span>${btn}</div>`;
+      }).join('');
+    }
+  }
+
+  async function solicitar(slug, btn) {
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    let j = {};
+    try {
+      const r = await fetch('/perfil/solicitar', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ slug })
+      });
+      j = await r.json().catch(() => ({}));
+    } catch (e) { }
+    if (j.ok) { btn.textContent = '✓ Solicitud enviada'; }
+    else { btn.textContent = j.error || 'Error'; btn.disabled = false; }
+  }
+  // ---- Equipos sincronizados (tokens de dispositivo del agente) ----
+  async function cargaTokens() {
+    let ts = [];
+    try { ts = await (await fetch('/api/perfil/tokens')).json(); } catch (e) { }
+    const box = document.getElementById('tokens');
+    const vivos = ts.filter(t => !t.revoked);
+    box.innerHTML = vivos.length ? vivos.map(t => `<div class="frow"><span class="fic">💻</span>
+      <span class="fn">${esc(t.name)}<div class="fh">alta: ${esc(t.created_at)} ·
+        ${t.last_used_at ? 'último uso: ' + esc(t.last_used_at) : 'sin usar todavía'}</div></span>
+      <button class="mini danger" onclick="revoca(${t.id})">✖ Revocar</button></div>`).join('')
+      : '<div class="empty">Ningún equipo dado de alta.</div>';
+  }
+  async function nuevoToken() {
+    const name = document.getElementById('tk-name').value.trim();
+    if (!name) { alert('Ponle un nombre para reconocerlo (ej: "Portátil de la oficina").'); return; }
+    let j = {};
+    try {
+      const r = await fetch('/perfil/token/new', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ name })
+      });
+      if (r.status === 403) { alert('Vuelve a introducir tu contraseña (paso de seguridad) y reinténtalo.'); location.href = '/elevate?next=/perfil'; return; }
+      j = await r.json().catch(() => ({}));
+    } catch (e) { }
+    if (!j.ok) { alert(j.error || 'No se pudo crear'); return; }
+    document.getElementById('tk-value').value = j.token;
+    document.getElementById('tk-new').style.display = 'block';
+    document.getElementById('tk-name').value = '';
+    cargaTokens();
+  }
+  function copiaToken() {
+    const i = document.getElementById('tk-value'); i.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(i.value);
+  }
+  async function revoca(id) {
+    if (!confirm('¿Revocar este equipo? Su agente dejará de sincronizar inmediatamente.')) return;
+    try {
+      await fetch('/perfil/token/revoke', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ id })
+      });
+    } catch (e) { }
+    cargaTokens();
+  }
+  load(); cargaTokens();
+</script>

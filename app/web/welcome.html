@@ -1,0 +1,150 @@
+<!-- Fragmento de contenido: home de BIENVENIDA. Lo envuelve layout.html (shell + sidebar). -->
+<div class="content-head">
+  <div class="logo">👋</div>
+  <div>
+    <h1>Te damos la bienvenida</h1>
+    <div class="sub">Guía rápida para empezar a usar Hylanlock</div>
+  </div>
+</div>
+<span class="badge"><span class="dot"></span> __CONN__</span>
+
+<style>
+  .nov { margin-top: 16px; background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+    border-radius: 14px; padding: 14px 16px; }
+  .nov h2 { font-size: 1rem; margin: 0 0 4px; color: var(--text); }
+  .nov .nrow { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    border-top: 1px solid var(--border); font-size: .87rem; }
+  .nov .nrow:first-of-type { border-top: none; }
+  .nov .nf { flex: 1; word-break: break-all; }
+  .nov .nm { color: var(--muted); font-size: .78rem; }
+  .nov a.go { text-decoration: none; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .nov .nhead { display: flex; align-items: flex-start; gap: 12px; }
+  .nov .nhead > div:first-child { flex: 1; }
+  .nov button.marcar { background: none; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 8px; padding: 5px 10px; font-size: .78rem; cursor: pointer; white-space: nowrap; }
+  .nov button.marcar:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+  .nov button.marcar:disabled { opacity: .5; cursor: default; }
+  .nov button.vista { background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: .95rem; padding: 2px 6px; border-radius: 6px; }
+  .nov button.vista:hover { color: var(--accent); background: var(--surface-2); }
+</style>
+
+<div class="nov" id="nov" style="display:none">
+  <div class="nhead">
+    <div>
+      <h2>🔔 Novedades para ti</h2>
+      <div class="sub" id="nov-sub" style="font-size:.82rem"></div>
+    </div>
+    <button class="marcar" id="nov-todas" type="button"
+            title="Dejar de avisar de todo esto, sin entrar en las carpetas">✓ Marcar todo como leído</button>
+  </div>
+  <div id="nov-list"></div>
+</div>
+
+<script>
+  // Las novedades se derivan de la auditoría: archivos que han dejado OTROS en tus carpetas
+  // desde la última vez que las abriste. Abrir la carpeta las marca como vistas, y desde aquí
+  // se pueden despachar SIN abrirla (una carpeta suelta, o todas de golpe).
+  (function () {
+    const esc = s => (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const caja = document.getElementById('nov');
+    const sub = document.getElementById('nov-sub');
+    const lista = document.getElementById('nov-list');
+    const btnTodas = document.getElementById('nov-todas');
+
+    function pinta(n) {
+      if (!n || !n.total) { caja.style.display = 'none'; return; }
+      caja.style.display = 'block';
+      sub.textContent = n.total === 1
+        ? 'Ha llegado 1 archivo nuevo desde tu última visita.'
+        : `Han llegado ${n.total} archivos nuevos desde tu última visita.`;
+      lista.innerHTML = n.items.map(i => `<div class="nrow">
+        <span>📄</span>
+        <span class="nf">${esc(i.file)}<div class="nm">${esc(i.folder_name)} · lo dejó ${esc(i.who)} · ${esc(i.ts)}</div></span>
+        <button class="vista" type="button" data-carpeta="${esc(i.folder)}"
+                title="Marcar como leído lo de ${esc(i.folder_name)}">✓</button>
+        <a class="go" href="${esc(i.url)}">Abrir →</a></div>`).join('');
+    }
+
+    async function carga() {
+      let n;
+      try { n = await (await fetch('/api/novedades')).json(); } catch (e) { return; }
+      pinta(n);
+    }
+
+    // El token CSRF lo añade solo el script del shell a cualquier fetch POST.
+    async function marcar(cuerpo) {
+      try {
+        const r = await fetch('/novedades/leidas', {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(cuerpo)
+        });
+        if (!r.ok) return false;
+      } catch (e) { return false; }
+      return true;
+    }
+
+    btnTodas.addEventListener('click', async () => {
+      btnTodas.disabled = true;
+      btnTodas.textContent = 'Marcando…';
+      if (await marcar({ todas: '1' })) {
+        caja.style.display = 'none';
+        // El contador del menú lateral se calcula al pintar la página, así que se recarga
+        // para que no quede un número que ya no es verdad.
+        location.reload();
+      } else {
+        btnTodas.disabled = false;
+        btnTodas.textContent = '✓ Marcar todo como leído';
+      }
+    });
+
+    // Delegación: la lista se repinta, así que no se enganchan los botones uno a uno.
+    lista.addEventListener('click', async (ev) => {
+      const b = ev.target.closest('button.vista');
+      if (!b) return;
+      b.disabled = true;
+      if (await marcar({ carpeta: b.dataset.carpeta })) location.reload();
+      else b.disabled = false;
+    });
+
+    carga();
+  })();
+</script>
+
+<section class="panel">
+  <div class="hello">Hola, <b>__HELLONAME__</b> 👋</div>
+  <p class="lead">Hylanlock es el espacio compartido de tu empresa para <b>enviar y recibir archivos
+    de forma segura</b> dentro de la red local. Así de fácil se usa:</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="n">1</div>
+      <div class="st">🏢 Entra en tu departamento</div>
+      <div class="sd">En «Departamentos» verás los espacios a los que tienes acceso (Ventas,
+        Administración…). Cada uno es una carpeta compartida y privada.</div>
+    </div>
+    <div class="step">
+      <div class="n">2</div>
+      <div class="st">📤 Envía tus archivos</div>
+      <div class="sd">Arrastra archivos o carpetas dentro del departamento. Si el WiFi se corta, la
+        subida se reanuda sola al reintentar. Nada sale a Internet.</div>
+    </div>
+    <div class="step">
+      <div class="n">3</div>
+      <div class="st">⬇️ Descarga lo compartido</div>
+      <div class="sd">Descarga lo que otros hayan dejado en tu departamento, desde la misma pantalla.
+        Todo queda registrado y protegido por tu usuario.</div>
+    </div>
+  </div>
+
+  <div class="cta-row">
+    <a href="/departamentos" class="cta">🏢 Ir a mis departamentos →</a>
+  </div>
+
+  <div class="tip">
+    <span>💡</span>
+    <span>Consejo: Hylanlock funciona solo dentro de la red de la empresa. Si estás fuera de la
+      oficina, no podrás acceder a los departamentos (es la protección del sistema).</span>
+  </div>
+</section>

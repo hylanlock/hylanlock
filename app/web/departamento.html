@@ -1,0 +1,187 @@
+<!-- Fragmento de contenido: UNA CARPETA (departamento o subcarpeta): subir + descargar.
+     Lo envuelve layout.html. Las URLs vienen por marcador para servir a ambos casos. -->
+<style>
+  #dep-view input[type=file] { display: none; }
+  .item { background: var(--surface-2); border: 1px solid var(--border); border-radius: 13px;
+    padding: 13px 15px; margin-top: 12px; }
+  .item .name { font-size: .9rem; word-break: break-all; }
+  .item .meta { font-size: .78rem; color: var(--muted); margin-top: 5px; }
+  .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+  .global { margin-top: 14px; background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    border-radius: 13px; padding: 13px 15px; }
+  .global .gtxt { font-size: .85rem; color: var(--text); }
+  .gbar { height: 9px; background: var(--surface-3); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden; margin-top: 9px; }
+  .gbar > span { display: block; height: 100%; width: 0; background: var(--accent-grad); transition: width .15s; }
+  #dep-view .flist { max-height: 44vh; overflow: auto; }
+  .crumb { display: inline-block; margin-bottom: 6px; font-size: .82rem; color: var(--muted);
+    text-decoration: none; }
+  .crumb:hover { color: var(--accent); }
+  .notice-box { margin-top: 14px; background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    border-radius: 13px; padding: 12px 15px; font-size: .86rem; color: var(--text); }
+</style>
+
+<div id="dep-view">
+  __CRUMB__
+  <div class="content-head">
+    <div class="logo">__ICON__</div>
+    <div>
+      <h1>__DEPNAME__</h1>
+      <div class="sub">__KIND__</div>
+    </div>
+  </div>
+  <span class="badge"><span class="dot"></span> Solo red local · aislado de Internet</span>
+  __AVISO__
+
+  <section class="panel">
+    <div id="upload-part" style="display:__D_UP__">
+      <h2 class="sec">📤 Subir a esta carpeta</h2>
+      <label class="drop" id="drop"><input type="file" id="file" multiple>
+        <span class="ic">📁</span>Toca para <b>elegir archivos</b><br>o arrástralos aquí</label>
+      <input type="file" id="folder" webkitdirectory directory multiple style="display:none">
+      <button id="pickfolder" class="btn2">📂 Elegir carpeta entera</button>
+      <div id="global" class="global" style="display:none">
+        <div class="gtxt" id="gtxt">Preparando…</div>
+        <div class="gbar"><span id="gbar"></span></div>
+      </div>
+      <div id="list"></div>
+      <button id="send" disabled>Subir</button>
+    </div>
+
+    <div id="files-part" style="display:__D_LS__">
+      <h2 class="sec">📥 Archivos <span id="count"></span></h2>
+      <div class="flist" id="flist">
+        <div class="empty">Cargando…</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const CHUNK = 16 * 1024 * 1024;
+  const fileInput = document.getElementById('file'), folderInput = document.getElementById('folder'),
+    pickFolder = document.getElementById('pickfolder'), drop = document.getElementById('drop'),
+    list = document.getElementById('list'), sendBtn = document.getElementById('send');
+  let items = [];
+  function fmt(n) { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return n.toFixed(1) + ' ' + u[i]; }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function cyrb53(str, seed = 0) {
+    let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+  }
+  function fileId(it) { return cyrb53(it.path + '|' + it.file.size + '|' + it.file.lastModified) + '-' + it.file.size; }
+  function setItems(fileList, useRel) {
+    items = Array.from(fileList).map(f => ({
+      file: f,
+      path: (useRel && f.webkitRelativePath) ? f.webkitRelativePath : f.name
+    })); render();
+  }
+  function render() {
+    list.innerHTML = ''; items.forEach((it, idx) => {
+      const d = document.createElement('div'); d.className = 'item';
+      d.innerHTML = `<div class="name">${it.path}</div><div class="meta" id="m${idx}">${fmt(it.file.size)}</div>
+  <div class="bar"><span id="b${idx}"></span></div>`; list.appendChild(d);
+    }); sendBtn.disabled = items.length === 0;
+  }
+  fileInput.addEventListener('change', e => setItems(e.target.files, false));
+  folderInput.addEventListener('change', e => setItems(e.target.files, true));
+  pickFolder.addEventListener('click', () => folderInput.click());
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => setItems(e.dataTransfer.files, false));
+  const gWrap = document.getElementById('global'), gBar = document.getElementById('gbar'), gTxt = document.getElementById('gtxt');
+  function putChunk(id, offset, blob, onprog) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest(); xhr.open('POST', '/upload/chunk', true);
+      xhr.setRequestHeader('X-Upload-Id', id); xhr.setRequestHeader('X-Offset', offset);
+      xhr.upload.onprogress = e => { if (e.lengthComputable) onprog(e.loaded); };
+      xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText });
+      xhr.onerror = () => reject(new Error('net')); xhr.ontimeout = () => reject(new Error('timeout'));
+      xhr.send(blob);
+    });
+  }
+  async function getOffset(id) {
+    try {
+      const r = await fetch('/upload/status?id=' + id);
+      if (r.ok) return (await r.json()).received || 0;
+    } catch (e) { } return 0;
+  }
+  async function uploadFile(item, idx) {
+    const file = item.file;
+    const meta = document.getElementById('m' + idx), bar = document.getElementById('b' + idx);
+    const id = fileId(item);
+    let offset = await getOffset(id); if (offset > file.size) offset = 0;
+    function show(total) {
+      const p = file.size ? total / file.size * 100 : 0; bar.style.width = p + '%';
+      meta.className = 'meta'; meta.textContent = `${fmt(total)} / ${fmt(file.size)}`;
+    }
+    if (offset > 0) show(offset);
+    while (offset < file.size) {
+      const end = Math.min(offset + CHUNK, file.size); const blob = file.slice(offset, end);
+      let done = false, tries = 0;
+      while (!done) {
+        try {
+          const res = await putChunk(id, offset, blob, loaded => show(offset + loaded));
+          if (res.status === 200 || res.status === 409) { offset = JSON.parse(res.text).received; done = true; }
+          else if (res.status === 401) { meta.className = 'meta err'; meta.textContent = '🔒 Sesion caducada. Recarga.'; return false; }
+          else throw new Error(res.text || ('HTTP ' + res.status));
+        } catch (e) {
+          tries++;
+          if (tries > 12) { meta.className = 'meta warn'; meta.textContent = `⏸ Pausado. Pulsa Subir para reanudar.`; return false; }
+          meta.className = 'meta warn'; meta.textContent = `… reconectando (intento ${tries})`;
+          await sleep(Math.min(1500 * tries, 6000)); offset = await getOffset(id); done = false;
+        }
+      }
+    }
+    try {
+      const r = await fetch('/upload/complete?id=' + id + '&__UPQS__', {
+        method: 'POST',
+        headers: { 'X-Filename': encodeURIComponent(item.path) }
+      });
+      if (r.ok) { bar.style.width = '100%'; meta.className = 'meta ok'; meta.textContent = '✅ Subido'; return true; }
+      meta.className = 'meta err'; meta.textContent = '❌ Error al finalizar'; return false;
+    } catch (e) { meta.className = 'meta err'; meta.textContent = '❌ Error al finalizar'; return false; }
+  }
+  sendBtn.addEventListener('click', async () => {
+    sendBtn.disabled = true; fileInput.disabled = true;
+    let allok = true;
+    for (let i = 0; i < items.length; i++) { const ok = await uploadFile(items[i], i); allok = allok && ok; }
+    sendBtn.textContent = allok ? '¡Listo! ✔' : 'Reanudar ⟳';
+    refreshList();
+    setTimeout(() => { sendBtn.textContent = 'Subir al departamento'; sendBtn.disabled = false; fileInput.disabled = false; }, 2600);
+  });
+
+  // ---- Lista de archivos del departamento (descargar) ----
+  function icon(name) {
+    const e = (name.split('.').pop() || '').toLowerCase();
+    if (['zip', '7z', 'rar', 'gz', 'iso'].includes(e)) return '🗜️';
+    if (['nes', 'snes', 'gba', 'gb', 'n64', 'z64', 'nds', 'bin', 'rom', 'sfc', 'gbc', 'cia', 'xci', 'nsp', 'wbfs'].includes(e)) return '🎮';
+    if (['mp4', 'mkv', 'avi', 'mov'].includes(e)) return '🎬';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(e)) return '🖼️';
+    if (['pdf', 'doc', 'docx', 'txt'].includes(e)) return '📄';
+    if (['mp3', 'wav', 'ogg', 'm4a'].includes(e)) return '🎵';
+    if (['exe', 'msi', 'apk'].includes(e)) return '⚙️'; return '📄';
+  }
+  async function refreshList() {
+    try {
+      const r = await fetch('__APIBASE__'); const files = await r.json();
+      const box = document.getElementById('flist'); document.getElementById('count').textContent = '(' + files.length + ')';
+      if (!files.length) { box.innerHTML = '<div class="empty">Aun no hay archivos aqui…</div>'; return; }
+      box.innerHTML = files.map(f => {
+        const sh = f.sha256 ? `<div class="fh" title="SHA-256: ${f.sha256}&#10;(clic para copiar)"
+    onclick="navigator.clipboard&&navigator.clipboard.writeText('${f.sha256}')">🔒 ${f.sha256.slice(0, 12)}…</div>` : '';
+        return `<div class="frow"><span class="fic">${icon(f.name)}</span>
+  <span class="fn">${f.name}${sh}</span><span class="fs">${fmt(f.size)}</span>
+  <a class="dl" href="__DLBASE__/download?file=${encodeURIComponent(f.name)}" download="${f.name}">⬇️</a></div>`;
+      }).join('');
+    } catch (e) { }
+  }
+  // Solo se pide el listado si el usuario tiene 'files.list'; si no, ni se intenta (daría 403).
+  const CAN_LIST = __CAN_LIST__;
+  if (CAN_LIST) { refreshList(); setInterval(refreshList, 4000); }
+</script>

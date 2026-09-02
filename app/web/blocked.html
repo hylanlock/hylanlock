@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylanlock · Servicio bloqueado</title>
+  <style>
+    __CSS__
+    .card::before { background: linear-gradient(90deg, var(--warn), var(--err)); }
+    .lockrow { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+    .lockrow .logo { background: linear-gradient(135deg, var(--warn), var(--err)); }
+    .detail { margin-top: var(--sp-3); font-size: .85rem; color: var(--faint); }
+    .acts { margin-top: var(--sp-5); display: flex; flex-direction: column; gap: 0; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="lockrow">
+      <div class="logo">🔒</div>
+      <div>
+        <h1>__TITLE__</h1>
+        <div class="sub">Hylanlock</div>
+      </div>
+    </div>
+    <p style="margin-top:12px;color:var(--text)">__MSG__</p>
+    <div class="detail">__DETAIL__</div>
+    <div class="acts">__ACTIONS__</div>
+  </div>
+</body>
+
+</html>

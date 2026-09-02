@@ -1,0 +1,710 @@
+<!-- Fragmento: PANEL DE ADMINISTRACIÓN (dashboard + detalle + editor). Lo envuelve layout.html. -->
+<style>
+  .crumb { display: inline-block; margin-bottom: 8px; font-size: .84rem; color: var(--muted);
+    text-decoration: none; cursor: pointer; }
+  .crumb:hover { color: var(--accent); }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: var(--sp-5); }
+  .kpi { cursor: pointer; text-align: left; border: 1px solid var(--border); border-radius: 16px;
+    padding: 16px 16px 14px; background: linear-gradient(180deg, var(--surface), var(--surface-2));
+    transition: border-color .15s, transform .12s, box-shadow .15s; position: relative; overflow: hidden; }
+  .kpi::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--accent-line);
+    opacity: 0; transition: opacity .15s; }
+  .kpi:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .10); }
+  .kpi:hover::before { opacity: .9; }
+  .kpi .ki { font-size: 22px; }
+  .kpi .kn { font-size: 2.1rem; font-weight: 800; letter-spacing: -.02em; margin-top: 6px; line-height: 1; }
+  .kpi .kl { color: var(--muted); font-size: .82rem; margin-top: 4px; font-weight: 600; }
+  .kpi .kgo { position: absolute; right: 14px; bottom: 12px; color: var(--faint); font-size: .8rem; }
+  .actions { margin-top: var(--sp-5); display: flex; gap: 12px; flex-wrap: wrap; }
+  .abtn { display: inline-flex; align-items: center; gap: 9px; padding: 13px 18px; border-radius: var(--radius);
+    font-weight: 700; font-size: .95rem; cursor: pointer; border: 1px solid transparent; margin: 0; width: auto; }
+  .abtn.primary { color: var(--accent-contrast); background: var(--accent-grad);
+    box-shadow: var(--shadow-accent), inset 0 1px 0 rgba(255, 255, 255, .22); }
+  .abtn.ghost { color: var(--text); background: var(--surface-2); border-color: var(--border); box-shadow: none; }
+  .rowlist { display: flex; flex-direction: column; gap: 9px; margin-top: var(--sp-3); }
+  .row { display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+    border: 1px solid var(--border); border-radius: 13px; padding: 11px 14px; }
+  .row .ic { font-size: 20px; }
+  .row .main { flex: 1; min-width: 0; }
+  .row .t { font-weight: 700; word-break: break-all; }
+  .row .d { font-size: .76rem; color: var(--muted); margin-top: 2px; }
+  .tag2 { display: inline-block; font-size: .68rem; padding: 2px 8px; border-radius: 20px; font-weight: 700;
+    background: var(--accent-weak); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
+  .tag-boss { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+  .mini { padding: 7px 12px; border-radius: 9px; font-size: .82rem; font-weight: 700; cursor: pointer;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border); margin: 0; width: auto; box-shadow: none; }
+  .mini:hover { background: var(--surface-3); filter: none; }
+  .mini.danger { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err);
+    border-color: color-mix(in srgb, var(--err) 32%, transparent); }
+  .field { margin-top: var(--sp-4); }
+  .field > label { font-size: .78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .field input[type=text], .field select { width: 100%; margin-top: 6px; padding: 11px 13px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: .95rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface-2); font-size: .84rem; cursor: pointer; }
+  .chip.on { background: var(--accent-weak); color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent); font-weight: 700; }
+  .stepup { display: inline-flex; align-items: center; gap: 7px; font-size: .74rem; color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 14%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+    padding: 5px 11px; border-radius: 999px; margin-top: 14px; font-weight: 700; }
+  .editrow { display: flex; gap: 10px; margin-top: var(--sp-5); flex-wrap: wrap; align-items: center; }
+  .msg { margin-top: 12px; font-size: .86rem; font-weight: 600; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+  .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: none; align-items: center;
+    justify-content: center; z-index: 60; padding: 20px; }
+  .overlay.show { display: flex; }
+  .modal { width: 100%; max-width: 460px; background: linear-gradient(180deg, var(--surface), var(--surface-2) 140%);
+    border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--sp-6); box-shadow: var(--shadow); position: relative; }
+  .modal h3 { font-size: 1.15rem; font-weight: 750; }
+  .genout { display: flex; gap: 8px; margin-top: 14px; }
+  .genout input { flex: 1; font-family: var(--mono); font-size: 1rem; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-3); color: var(--text); margin: 0; }
+  .genopts { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .genopts .line { display: flex; align-items: center; gap: 10px; font-size: .88rem; }
+  .genopts input[type=range] { flex: 1; }
+  .genopts input[type=checkbox] { width: auto; margin: 0; }
+  .btn-primary { padding: 12px 16px; border-radius: 10px; font-weight: 700; cursor: pointer; border: 1px solid transparent;
+    color: var(--accent-contrast); background: var(--accent-grad); box-shadow: var(--shadow-accent); margin: 0; width: auto; }
+  .btn-ghost { padding: 12px 16px; border-radius: 10px; font-weight: 700; cursor: pointer; margin: 0; width: auto;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
+  .modal .field:first-of-type { margin-top: 0; }
+  .hidden { display: none; }
+</style>
+
+<!-- ===== VISTA 1: DASHBOARD ===== -->
+<section id="v-dash">
+  <div class="content-head">
+    <div class="logo">🛠️</div>
+    <div>
+      <h1>Administración</h1>
+      <div class="sub">Resumen de tu organización</div>
+    </div>
+  </div>
+  <div class="kpis">
+    <div class="kpi" onclick="showList('deptos')"><div class="ki">🏢</div><div class="kn" id="c-deptos">–</div><div class="kl">Departamentos</div><div class="kgo">ver →</div></div>
+    <div class="kpi" onclick="showList('miembros')"><div class="ki">👤</div><div class="kn" id="c-miembros">–</div><div class="kl">Miembros</div><div class="kgo">ver →</div></div>
+    <div class="kpi" onclick="showList('jefes')"><div class="ki">👑</div><div class="kn" id="c-jefes">–</div><div class="kl">Jefes</div><div class="kgo">ver →</div></div>
+    <div class="kpi" onclick="showList('admins')"><div class="ki">🛠️</div><div class="kn" id="c-admins">–</div><div class="kl">Administradores</div><div class="kgo">ver →</div></div>
+  </div>
+  <h2 class="sec">Acciones</h2>
+  <div class="actions">
+    <button class="abtn primary" onclick="openNewDept()">➕ Crear departamento</button>
+    <button class="abtn primary" onclick="openNewUser()">➕ Crear usuario</button>
+    <button class="abtn ghost" onclick="showSvc()">🔌 Integraciones (API)</button>
+    <button class="abtn ghost" onclick="openGen(false)">🔑 Generador de contraseñas</button>
+    <a class="abtn ghost" href="/admin/licencia" style="text-decoration:none;display:inline-flex;align-items:center">🪪 Licencia</a>
+  </div>
+  <div id="requests-wrap" style="display:none">
+    <h2 class="sec">🙋 Solicitudes de acceso pendientes</h2>
+    <div id="requests" class="flist"></div>
+  </div>
+</section>
+
+<!-- ===== VISTA 2: LISTA ===== -->
+<section id="v-list" class="hidden">
+  <a class="crumb" onclick="showDash()">← Panel de administración</a>
+  <div class="content-head">
+    <div class="logo" id="list-ic">👤</div>
+    <div><h1 id="list-title">Miembros</h1><div class="sub" id="list-sub"></div></div>
+  </div>
+  <section class="panel"><div class="rowlist" id="list-rows"></div></section>
+</section>
+
+<!-- ===== VISTA 2b: SUBCARPETAS DE UN DEPARTAMENTO ===== -->
+<section id="v-subs" class="hidden">
+  <a class="crumb" onclick="showList('deptos')">← Departamentos</a>
+  <div class="content-head">
+    <div class="logo">📁</div>
+    <div><h1 id="subs-title">Subcarpetas</h1>
+      <div class="sub">Carpetas privadas dentro del departamento. No se heredan: el acceso es siempre explícito.</div></div>
+  </div>
+  <section class="panel">
+    <div class="field"><label>Nueva subcarpeta</label>
+      <div class="genout"><input type="text" id="ns-name" placeholder="ej: Nóminas de Luis" autocomplete="off">
+        <button class="mini" onclick="addSub()">➕ Crear</button></div>
+    </div>
+    <div id="subs-msg" class="msg"></div>
+    <div class="rowlist" id="subs-rows"></div>
+  </section>
+</section>
+
+<!-- ===== VISTA 2c: CUENTAS DE SERVICIO (integraciones / API) ===== -->
+<section id="v-svc" class="hidden">
+  <a class="crumb" onclick="showDash()">← Panel de administración</a>
+  <div class="content-head">
+    <div class="logo">🔌</div>
+    <div><h1>Integraciones</h1>
+      <div class="sub">Cuentas de servicio para que otros programas usen la API. No son personas:
+        no pueden entrar por la web.</div></div>
+  </div>
+  <section class="panel">
+    <div class="field"><label>Nueva integración</label>
+      <div class="genout"><input type="text" id="sv-name" placeholder="ej: erp-facturacion" autocomplete="off">
+        <button class="mini" onclick="addSvc()">➕ Crear</button></div>
+      <div class="sub" style="margin-top:6px">Después dale acceso a las carpetas que necesite desde
+        «Departamentos» y «Subcarpetas», igual que a un empleado. Mínimo privilegio.</div>
+    </div>
+    <div id="sv-key" style="display:none;margin-top:12px" class="notice-box">
+      <b>⚠️ Copia la clave ahora: no se volverá a mostrar.</b>
+      <div class="genout" style="margin-top:8px">
+        <input type="text" id="sv-key-val" readonly>
+        <button class="mini" onclick="copiaClave()">📋 Copiar</button>
+      </div>
+    </div>
+    <div id="sv-msg" class="msg"></div>
+    <div class="rowlist" id="sv-rows"></div>
+  </section>
+</section>
+
+<!-- ===== VISTA 3: EDITAR USUARIO ===== -->
+<section id="v-edit" class="hidden">
+  <a class="crumb" onclick="backToList()">← Volver a la lista</a>
+  <div class="content-head">
+    <div class="logo">✏️</div>
+    <div><h1 id="edit-title">Editar usuario</h1><div class="sub">Cambios protegidos por tu contraseña</div></div>
+  </div>
+  <span class="stepup">🔒 Acción protegida · se te pedirá tu contraseña si hace falta</span>
+  <section class="panel">
+    <div class="field">
+      <label>Nombre de usuario</label>
+      <input type="text" id="edit-username" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Rol</label>
+      <select id="edit-role">
+        <option value="member">👤 Miembro (empresa, solo red local)</option>
+        <option value="head">👑 Jefe / Director (acceso a todos los departamentos)</option>
+        <option value="admin">🛠️ Administrador (local + Internet)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Departamentos asignados</label>
+      <div class="chips" id="edit-deps"></div>
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <div class="editrow" style="margin-top:6px">
+        <button class="mini" onclick="sendReset()">🎟️ Enviar enlace de restablecimiento</button>
+        <button class="mini direct-only" onclick="openGen(true)">🔑 Fijar contraseña directa</button>
+      </div>
+      <span class="sub">Con el enlace, el usuario pone su nueva contraseña (tú no la ves). O fíjala tú directamente.</span>
+    </div>
+    <div id="edit-msg" class="msg"></div>
+    <div class="editrow">
+      <button class="btn-primary" onclick="saveUser()">💾 Guardar cambios</button>
+      <button class="mini danger" onclick="delUser()">🗑️ Borrar usuario</button>
+    </div>
+  </section>
+</section>
+
+<!-- ===== Modal: crear departamento ===== -->
+<div class="overlay" id="ov-dept">
+  <div class="modal">
+    <h3>➕ Crear departamento</h3>
+    <div class="field"><label>Nombre</label><input type="text" id="nd-name" placeholder="ej: Ventas, Marketing" autocomplete="off"></div>
+    <div id="nd-msg" class="msg"></div>
+    <div class="editrow" style="justify-content:flex-end">
+      <button class="btn-ghost" onclick="closeOv('ov-dept')">Cancelar</button>
+      <button class="btn-primary" onclick="createDept()">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: crear usuario ===== -->
+<div class="overlay" id="ov-user">
+  <div class="modal">
+    <h3>➕ Crear usuario</h3>
+    <div class="field"><label>Usuario</label><input type="text" id="nu-name" placeholder="ej: juan.perez" autocomplete="off"></div>
+    <div class="field"><label>Rol</label>
+      <select id="nu-role">
+        <option value="member">👤 Miembro</option>
+        <option value="head">👑 Jefe / Director</option>
+        <option value="admin">🛠️ Administrador</option>
+      </select>
+    </div>
+    <div class="field"><label>Contraseña</label>
+      <div class="chips" style="margin-top:6px">
+        <span class="chip on" id="m-invite" onclick="setMethod('invite')">🎟️ Enviar invitación</span>
+        <span class="chip" id="m-direct" onclick="setMethod('direct')">🔑 Fijar contraseña</span>
+      </div>
+      <div class="sub" id="nu-invite-note" style="margin-top:8px">El usuario recibirá un enlace de un solo uso y creará su propia contraseña. Tú nunca la verás.</div>
+      <div class="genout hidden" id="nu-pwbox"><input type="text" id="nu-pw" placeholder="escribe o genera una"><button class="mini" onclick="nuGen()">🔑 Generar</button></div>
+    </div>
+    <div id="nu-msg" class="msg"></div>
+    <div class="editrow" style="justify-content:flex-end">
+      <button class="btn-ghost" onclick="closeOv('ov-user')">Cancelar</button>
+      <button class="btn-primary" onclick="createUser()">Crear</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: enlace de invitación generado ===== -->
+<div class="overlay" id="ov-invite">
+  <div class="modal">
+    <h3 id="inv-title">🎟️ Enlace de invitación</h3>
+    <div class="sub" id="inv-sub" style="margin-top:4px"></div>
+    <div style="text-align:center;margin-top:14px" id="inv-qr"></div>
+    <div class="genout"><input type="text" id="inv-url" readonly><button class="mini" onclick="copyInv()">📋 Copiar</button></div>
+    <div class="sub" style="margin-top:10px">⚠️ Este enlace solo se muestra ahora. Entrégaselo al usuario (en persona, chat interno o el QR). Caduca y es de un solo uso.</div>
+    <div class="editrow" style="justify-content:flex-end">
+      <button class="btn-primary" onclick="closeOv('ov-invite')">Hecho</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Modal: generador / restablecer ===== -->
+<div class="overlay" id="ov-gen">
+  <div class="modal">
+    <h3 id="gen-title">🔑 Generador de contraseñas</h3>
+    <div class="sub" id="gen-sub" style="margin-top:4px"></div>
+    <div class="genout"><input type="text" id="gen-out" readonly><button class="mini" onclick="copyGen()">📋 Copiar</button></div>
+    <div class="genopts">
+      <div class="line">Longitud: <b id="gen-len-l">16</b><input type="range" id="gen-len" min="8" max="40" value="16" oninput="genLenLbl();gen()"></div>
+      <label class="line"><input type="checkbox" id="gen-up" checked onchange="gen()"> Mayúsculas (A-Z)</label>
+      <label class="line"><input type="checkbox" id="gen-num" checked onchange="gen()"> Números (0-9)</label>
+      <label class="line"><input type="checkbox" id="gen-sym" checked onchange="gen()"> Símbolos (!@#…)</label>
+    </div>
+    <div id="gen-msg" class="msg"></div>
+    <div class="editrow" style="justify-content:flex-end">
+      <button class="btn-ghost" onclick="closeOv('ov-gen')">Cerrar</button>
+      <button class="btn-ghost" onclick="gen()">🔄 Otra</button>
+      <button class="btn-primary hidden" id="gen-save" onclick="saveReset()">💾 Guardar contraseña</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function esc(s) { return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  let USERS = [], DEPTS = [], CURRENT = 'miembros', EDIT = null;
+  let CFG = { method: 'invite', allow_direct: true, min_password: 8, invite_hours: 48 };
+
+  async function post(url, data) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(data) });
+      if (r.status === 403) {
+        const t = await r.text().catch(() => '');
+        if (/step-up|re-auten/i.test(t)) { location.href = '/elevate?next=/admin'; return { stepup: true }; }
+        return { ok: false, error: t || 'Sin permiso' };
+      }
+      let j = null; try { j = await r.json(); } catch (e) { }
+      if (j && j.error) return { ok: false, error: j.error };
+      return { ok: r.ok, json: j };
+    } catch (e) { return { ok: false, error: 'Error de red' }; }
+  }
+
+  async function loadData() {
+    const [ru, rd, rc] = await Promise.all([
+      fetch('/api/admin/users'), fetch('/api/admin/departments'), fetch('/api/admin/config')]);
+    USERS = await ru.json(); DEPTS = await rd.json();
+    try { CFG = await rc.json(); } catch (e) { }
+    applyPolicy();
+    renderCounts();
+    loadRequests();
+  }
+  async function loadRequests() {
+    let reqs = [];
+    try { reqs = await (await fetch('/api/admin/requests')).json(); } catch (e) { }
+    const wrap = document.getElementById('requests-wrap');
+    const box = document.getElementById('requests');
+    if (!reqs.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    box.innerHTML = reqs.map(r => `<div class="row"><span class="ic">🙋</span>
+      <div class="main"><div class="t">${esc(r.username)}</div>
+        <div class="d">pide acceso a <b>${esc(r.dept_name)}</b></div></div>
+      <button class="mini" onclick="resolveReq(${r.id}, true, this)">✅ Aprobar</button>
+      <button class="mini" onclick="resolveReq(${r.id}, false, this)">🚫 Rechazar</button></div>`).join('');
+  }
+  async function resolveReq(id, approve, btn) {
+    btn.disabled = true;
+    const r = await post('/admin/request/resolve', { id, action: approve ? 'approve' : 'reject' });
+    if (r.stepup) return;
+    if (!r.ok) { btn.disabled = false; alert(r.error || 'Error'); return; }
+    await loadData();   // refresca solicitudes y (si se aprobó) las membresías
+  }
+  function applyPolicy() {
+    // Si la empresa no permite fijar contraseñas directas, la UI solo ofrece invitación.
+    document.getElementById('m-direct').style.display = CFG.allow_direct ? '' : 'none';
+    document.querySelectorAll('.direct-only').forEach(el => el.style.display = CFG.allow_direct ? '' : 'none');
+  }
+  function roleOf(u) { return u.scope === 'admin' ? 'admin' : (u.boss ? 'head' : 'member'); }
+  function groups() {
+    // Las cuentas de servicio viven en la tabla de usuarios (para reutilizar el RBAC), pero NO
+    // son personas: no deben contarse ni listarse junto a los empleados.
+    const personas = USERS.filter(u => u.scope !== 'service');
+    return {
+      admins: personas.filter(u => u.scope === 'admin'),
+      jefes: personas.filter(u => u.scope !== 'admin' && u.boss),
+      miembros: personas.filter(u => u.scope !== 'admin' && !u.boss),
+    };
+  }
+  function userDeps(username) {
+    return DEPTS.filter(d => d.members.some(m => m.username === username))
+      .map(d => ({ slug: d.slug, name: d.name, role: (d.members.find(m => m.username === username) || {}).role }));
+  }
+  function renderCounts() {
+    const g = groups();
+    document.getElementById('c-deptos').textContent = DEPTS.length;
+    document.getElementById('c-miembros').textContent = g.miembros.length;
+    document.getElementById('c-jefes').textContent = g.jefes.length;
+    document.getElementById('c-admins').textContent = g.admins.length;
+  }
+
+  function view(id) { ['v-dash', 'v-list', 'v-subs', 'v-svc', 'v-edit'].forEach(v => document.getElementById(v).classList.toggle('hidden', v !== id)); }
+  function showDash() { view('v-dash'); renderCounts(); }
+
+  const LIST_META = {
+    deptos: { ic: '🏢', title: 'Departamentos', sub: 'Toca un departamento para gestionarlo' },
+    miembros: { ic: '👤', title: 'Miembros', sub: 'Toca un usuario para editarlo' },
+    jefes: { ic: '👑', title: 'Jefes / Directores', sub: 'Acceso a todos los departamentos' },
+    admins: { ic: '🛠️', title: 'Administradores', sub: 'Local + Internet' },
+  };
+  function showList(kind) {
+    CURRENT = kind; const m = LIST_META[kind];
+    document.getElementById('list-ic').textContent = m.ic;
+    document.getElementById('list-title').textContent = m.title;
+    document.getElementById('list-sub').textContent = m.sub;
+    const box = document.getElementById('list-rows');
+    if (kind === 'deptos') {
+      box.innerHTML = DEPTS.length ? DEPTS.map(d => {
+        const head = d.members.find(m => m.role === 'head');
+        const info = `${d.members.length} miembro(s)` + (head ? ` · jefe: ${esc(head.username)}` : '');
+        return `<div class="row"><span class="ic">🏢</span><div class="main"><div class="t">${esc(d.name)} <span class="tag2">/${esc(d.slug)}</span></div><div class="d">${info}</div></div>
+          <button class="mini" onclick="showList('miembros')">👥 Gestionar miembros</button>
+          <button class="mini" onclick="showSubs('${esc(d.slug)}','${esc(d.name)}')">📁 Subcarpetas</button>
+          <button class="mini danger" onclick="delDept('${esc(d.slug)}','${esc(d.name)}')">🗑️</button></div>`;
+      }).join('') : '<div class="empty">Aún no hay departamentos. Créalo desde el panel.</div>';
+    } else {
+      const list = groups()[kind];
+      box.innerHTML = list.length ? list.map(u => {
+        const tag = u.boss ? '<span class="tag2 tag-boss">👑 Jefe</span>' : '';
+        const pend = u.status === 'pending' ? '<span class="tag2 tag-boss">⏳ Pendiente</span>' : '';
+        const deps = userDeps(u.username).map(x => x.name).join(', ') || (u.scope === 'admin' ? 'Todos' : 'sin departamento');
+        const resend = u.status === 'pending' ? `<button class="mini" onclick="resendInvite('${esc(u.username)}')">🎟️ Reenviar</button>` : '';
+        return `<div class="row"><span class="ic">${u.scope === 'admin' ? '🛠️' : '👤'}</span>
+          <div class="main"><div class="t">${esc(u.username)} ${tag}${pend}</div><div class="d">${esc(deps)}</div></div>
+          ${resend}<button class="mini" onclick="editUser('${esc(u.username)}')">✏️ Editar</button></div>`;
+      }).join('') : '<div class="empty">No hay usuarios en esta categoría.</div>';
+    }
+    view('v-list');
+  }
+  function backToList() { showList(CURRENT); }
+
+  // ---- Cuentas de servicio (integraciones que usan la API) ----
+  let SVCS = [];
+  async function showSvc() {
+    document.getElementById('sv-name').value = '';
+    document.getElementById('sv-msg').textContent = '';
+    document.getElementById('sv-key').style.display = 'none';
+    await cargaSvc(); view('v-svc');
+  }
+  async function cargaSvc() {
+    try { const r = await fetch('/api/admin/services'); SVCS = r.ok ? await r.json() : []; }
+    catch (e) { SVCS = []; }
+    const box = document.getElementById('sv-rows');
+    if (!SVCS.length) {
+      box.innerHTML = '<div class="empty">Aún no hay integraciones. Crea una si otro programa de la empresa necesita leer archivos por API.</div>';
+      return;
+    }
+    box.innerHTML = SVCS.map(s => {
+      const carpetas = [...s.departments.map(d => d.name),
+                        ...s.subfolders.map(f => f.dept_name + ' / ' + f.name)];
+      const acc = carpetas.length ? carpetas.map(esc).join(' · ')
+        : '<b>sin acceso a ninguna carpeta</b> — dáselo desde Departamentos o Subcarpetas';
+      const claves = s.keys.length ? s.keys.map(k => `<div class="frow"><span class="fic">🔑</span>
+        <span class="fn">${esc(k.name)}<div class="fh">alta: ${esc(k.created_at)} ·
+          ${k.last_used_at ? 'último uso: ' + esc(k.last_used_at) : 'sin usar todavía'}</div></span>
+        <button class="mini danger" onclick="revocaClave('${esc(s.username)}',${k.id})">✖ Revocar</button></div>`).join('')
+        : '<div class="empty">Sin claves activas.</div>';
+      return `<div class="row" style="display:block">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="ic">🔌</span>
+          <div class="main"><div class="t">${esc(s.username)}
+            ${s.remote ? '<span class="tag2 tag-boss">🌍 acceso remoto</span>' : '<span class="tag2">🔒 solo LAN</span>'}</div>
+            <div class="d">${acc}</div></div>
+          <button class="mini" onclick="nuevaClave('${esc(s.username)}')">🔑 Nueva clave</button>
+          <button class="mini" onclick="toggleRemoto('${esc(s.username)}',${s.remote ? 0 : 1})">${s.remote ? '🔒 Solo LAN' : '🌍 Permitir remoto'}</button>
+          <button class="mini danger" onclick="borraSvc('${esc(s.username)}')">🗑️</button>
+        </div>
+        <div style="margin-top:10px;padding-left:6px">${claves}</div></div>`;
+    }).join('');
+  }
+  async function addSvc() {
+    const name = document.getElementById('sv-name').value.trim();
+    const msg = document.getElementById('sv-msg');
+    if (!name) { msg.textContent = 'Ponle un nombre (ej: erp-facturacion).'; return; }
+    const r = await post('/admin/service/add', { name });
+    if (r.stepup) return;
+    if (!r.ok) { msg.textContent = r.error || 'No se pudo crear'; return; }
+    document.getElementById('sv-name').value = ''; msg.textContent = '';
+    await cargaSvc();
+  }
+  async function nuevaClave(name) {
+    const r = await post('/admin/service/key', { name, label: 'clave ' + new Date().toISOString().slice(0, 10) });
+    if (r.stepup) return;
+    if (!r.ok) { alert(r.error || 'No se pudo crear la clave'); return; }
+    document.getElementById('sv-key-val').value = r.token;
+    document.getElementById('sv-key').style.display = 'block';
+    await cargaSvc();
+  }
+  function copiaClave() {
+    const i = document.getElementById('sv-key-val'); i.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(i.value);
+  }
+  async function revocaClave(name, id) {
+    if (!confirm('¿Revocar esta clave? La integración dejará de funcionar inmediatamente.')) return;
+    const r = await post('/admin/service/revoke', { name, id });
+    if (r.stepup) return;
+    await cargaSvc();
+  }
+  async function toggleRemoto(name, allow) {
+    if (allow && !confirm('¿Permitir que esta integración use la API desde FUERA de la red local?\n\nSolo si de verdad lo necesita: es la protección principal del producto.')) return;
+    const r = await post('/admin/service/remote', { name, allow: String(allow) });
+    if (r.stepup) return;
+    await cargaSvc();
+  }
+  async function borraSvc(name) {
+    if (!confirm('¿Borrar la integración ' + name + '?\n\nSus claves dejan de funcionar. Los archivos NO se tocan.')) return;
+    const r = await post('/admin/service/del', { name });
+    if (r.stepup) return;
+    await cargaSvc();
+  }
+
+  // ---- Subcarpetas (ACL por usuario, un rol por carpeta) ----
+  let SUB_DEP = '', SUB_DEPNAME = '', SUBS = [];
+  const SUB_ROLES = [
+    ['folder_owner', '👤 Dueño (ver, subir, descargar)'],
+    ['depositor', '📥 Solo dejar (buzón de entrega)'],
+    ['reader', '👁️ Solo lectura'],
+  ];
+  async function showSubs(slug, name) {
+    SUB_DEP = slug; SUB_DEPNAME = name;
+    document.getElementById('subs-title').textContent = 'Subcarpetas de ' + name;
+    document.getElementById('ns-name').value = '';
+    document.getElementById('subs-msg').textContent = '';
+    await loadSubs(); view('v-subs');
+  }
+  async function loadSubs() {
+    try {
+      const r = await fetch('/api/admin/subfolders?dep=' + encodeURIComponent(SUB_DEP));
+      SUBS = r.ok ? await r.json() : [];
+    } catch (e) { SUBS = []; }
+    const box = document.getElementById('subs-rows');
+    if (!SUBS.length) { box.innerHTML = '<div class="empty">Aún no hay subcarpetas en este departamento.</div>'; return; }
+    // Candidatos: cualquier usuario que no sea admin (el admin ya llega por jerarquía).
+    // Aquí SÍ salen las cuentas de servicio: darles acceso a una carpeta es justo el mecanismo
+    // por el que una integración obtiene permisos. Se marcan para no confundirlas con personas.
+    const cands = USERS.filter(u => u.scope !== 'admin')
+      .map(u => ({ u: u.username, lbl: u.username + (u.scope === 'service' ? '  🔌 (integración)' : '') }));
+    box.innerHTML = SUBS.map(sf => {
+      const acl = sf.acl.map(a => {
+        const lbl = (SUB_ROLES.find(r => r[0] === a.role) || ['', a.role])[1];
+        return `<div class="row"><span class="ic">${a.role === 'depositor' ? '📥' : (a.role === 'reader' ? '👁️' : '👤')}</span>
+          <div class="main"><div class="t">${esc(a.username)}</div><div class="d">${esc(lbl)}</div></div>
+          <button class="mini danger" onclick="setSubAccess('${esc(sf.slug)}','${esc(a.username)}','')">✖ Quitar</button></div>`;
+      }).join('') || '<div class="empty">Nadie tiene acceso todavía. Solo jefes, dirección y administradores.</div>';
+      const libres = cands.filter(c => !sf.acl.some(a => a.username === c.u));
+      const opts = libres.map(c => `<option value="${esc(c.u)}">${esc(c.lbl)}</option>`).join('');
+      const roles = SUB_ROLES.map(r => `<option value="${r[0]}">${esc(r[1])}</option>`).join('');
+      const add = libres.length ? `<div class="genout" style="margin-top:8px">
+          <select id="sa-u-${esc(sf.slug)}">${opts}</select>
+          <select id="sa-r-${esc(sf.slug)}">${roles}</select>
+          <button class="mini" onclick="addSubAccess('${esc(sf.slug)}')">➕ Dar acceso</button></div>`
+        : '<div class="sub" style="margin-top:8px">Todos los usuarios ya tienen acceso.</div>';
+      return `<div class="row" style="display:block">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="ic">📁</span>
+          <div class="main"><div class="t">${esc(sf.name)} <span class="tag2">/${esc(sf.slug)}</span></div>
+            <div class="d">${sf.acl.length} con acceso explícito</div></div>
+          <button class="mini danger" onclick="delSub('${esc(sf.slug)}','${esc(sf.name)}')">🗑️</button>
+        </div>
+        <div style="margin-top:10px;padding-left:6px">${acl}${add}</div></div>`;
+    }).join('');
+  }
+  async function addSub() {
+    const name = document.getElementById('ns-name').value.trim();
+    const msg = document.getElementById('subs-msg');
+    if (!name) { msg.textContent = 'Escribe un nombre.'; return; }
+    const r = await post('/admin/sub/add', { dep: SUB_DEP, name });
+    if (r.stepup) return;
+    if (!r.ok) { msg.textContent = r.error || 'No se pudo crear'; return; }
+    document.getElementById('ns-name').value = ''; msg.textContent = '';
+    await loadSubs();
+  }
+  async function delSub(sub, name) {
+    if (!confirm('¿Quitar la subcarpeta ' + name + '?\n\nLos archivos NO se borran: siguen en el disco del servidor.')) return;
+    const r = await post('/admin/sub/del', { dep: SUB_DEP, sub });
+    if (r.stepup) return;
+    if (!r.ok) { alert(r.error || 'No se pudo borrar'); return; }
+    await loadSubs();
+  }
+  async function addSubAccess(sub) {
+    const u = document.getElementById('sa-u-' + sub).value;
+    const role = document.getElementById('sa-r-' + sub).value;
+    await setSubAccess(sub, u, role);
+  }
+  async function setSubAccess(sub, user, role) {
+    const r = await post('/admin/sub/access', { dep: SUB_DEP, sub, user, role });
+    if (r.stepup) return;
+    if (!r.ok) { alert(r.error || 'No se pudo cambiar el acceso'); return; }
+    await loadSubs();
+  }
+
+  function editUser(username) {
+    const u = USERS.find(x => x.username === username); if (!u) return;
+    EDIT = username;
+    document.getElementById('edit-title').textContent = 'Editar · ' + username;
+    document.getElementById('edit-username').value = username;
+    document.getElementById('edit-role').value = roleOf(u);
+    document.getElementById('edit-msg').textContent = '';
+    const mine = userDeps(username).map(d => d.slug);
+    document.getElementById('edit-deps').innerHTML = DEPTS.length ? DEPTS.map(d => {
+      const on = mine.includes(d.slug);
+      return `<span class="chip ${on ? 'on' : ''}" onclick="toggleDep('${esc(d.slug)}', this)">🏢 ${esc(d.name)} ${on ? '✓' : ''}</span>`;
+    }).join('') : '<span class="sub">No hay departamentos.</span>';
+    view('v-edit');
+  }
+  async function toggleDep(slug, el) {
+    const on = el.classList.contains('on');
+    const r = await post(on ? '/admin/dep/unassign' : '/admin/dep/assign', { username: EDIT, slug, role: 'member' });
+    if (r.stepup) return;
+    if (r.ok) { await loadData(); editUser(EDIT); } else msg('edit-msg', r.error || 'Error', false);
+  }
+  function msg(id, text, ok) { const e = document.getElementById(id); e.textContent = text; e.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+  async function saveUser() {
+    const u = USERS.find(x => x.username === EDIT); if (!u) return;
+    const newName = document.getElementById('edit-username').value.trim();
+    const newRole = document.getElementById('edit-role').value;
+    let changed = false;
+    if (newRole !== roleOf(u)) {
+      const r = await post('/admin/user/role', { username: EDIT, role: newRole });
+      if (r.stepup) return; if (!r.ok) return msg('edit-msg', r.error || 'Error al cambiar el rol', false);
+      changed = true;
+    }
+    if (newName && newName !== EDIT) {
+      const r = await post('/admin/user/rename', { username: EDIT, new: newName });
+      if (r.stepup) return; if (!r.ok) return msg('edit-msg', r.error || 'Error al renombrar', false);
+      EDIT = (r.json && r.json.username) || newName; changed = true;
+    }
+    await loadData();
+    if (changed) { msg('edit-msg', '✅ Cambios guardados', true); editUser(EDIT); }
+    else msg('edit-msg', 'No había cambios que guardar', true);
+  }
+  async function delUser() {
+    if (!confirm('¿Borrar a ' + EDIT + '? No se puede deshacer.')) return;
+    const r = await post('/admin/users/del', { username: EDIT });
+    if (r.stepup) return; if (!r.ok) return msg('edit-msg', r.error || 'No se pudo borrar', false);
+    await loadData(); showList(CURRENT === 'deptos' ? 'miembros' : CURRENT);
+  }
+  async function delDept(slug, name) {
+    if (!confirm('¿Borrar el departamento ' + name + '? Los archivos NO se borran.')) return;
+    const r = await post('/admin/dep/del', { slug });
+    if (r.stepup) return; if (!r.ok) { alert(r.error || 'No se pudo borrar'); return; }
+    await loadData(); showList('deptos');
+  }
+
+  // ---- Modales crear ----
+  function openOv(id) { document.getElementById(id).classList.add('show'); }
+  function closeOv(id) { document.getElementById(id).classList.remove('show'); }
+  function openNewDept() { document.getElementById('nd-name').value = ''; document.getElementById('nd-msg').textContent = ''; openOv('ov-dept'); }
+  async function createDept() {
+    const name = document.getElementById('nd-name').value.trim();
+    if (!name) return msg('nd-msg', 'Escribe un nombre', false);
+    const r = await post('/admin/dep/add', { name });
+    if (r.stepup) return; if (!r.ok) return msg('nd-msg', r.error || 'Error', false);
+    closeOv('ov-dept'); await loadData(); showDash();
+  }
+  let NU_METHOD = 'invite';
+  function setMethod(m) {
+    NU_METHOD = m;
+    document.getElementById('m-invite').classList.toggle('on', m === 'invite');
+    document.getElementById('m-direct').classList.toggle('on', m === 'direct');
+    document.getElementById('nu-pwbox').classList.toggle('hidden', m !== 'direct');
+    document.getElementById('nu-invite-note').classList.toggle('hidden', m !== 'invite');
+  }
+  function openNewUser() {
+    document.getElementById('nu-name').value = ''; document.getElementById('nu-pw').value = '';
+    document.getElementById('nu-role').value = 'member'; document.getElementById('nu-msg').textContent = '';
+    setMethod(CFG.allow_direct ? CFG.method : 'invite'); openOv('ov-user');
+  }
+  function nuGen() { document.getElementById('nu-pw').value = makePw(16, true, true, true); }
+  async function createUser() {
+    const username = document.getElementById('nu-name').value.trim();
+    const role = document.getElementById('nu-role').value;
+    if (!username) return msg('nu-msg', 'El usuario es obligatorio', false);
+    const data = { username, scope: role === 'admin' ? 'admin' : 'member' };
+    if (role === 'head') data.boss = 'on';
+    if (NU_METHOD === 'invite') data.invite = 'on';
+    else {
+      const pw = document.getElementById('nu-pw').value;
+      if (!pw) return msg('nu-msg', 'Escribe o genera una contraseña', false);
+      data.password = pw;
+    }
+    const r = await post('/admin/users/add', data);
+    if (r.stepup) return; if (!r.ok) return msg('nu-msg', r.error || 'Error', false);
+    closeOv('ov-user'); await loadData(); showDash();
+    if (r.json && r.json.invite) showInvite(r.json.invite, false);
+  }
+
+  // ---- Enlace de invitación ----
+  function showInvite(inv, isReset) {
+    document.getElementById('inv-title').textContent = isReset ? '🎟️ Enlace de restablecimiento' : '🎟️ Invitación creada';
+    document.getElementById('inv-sub').textContent = (isReset ? 'Para ' : 'Cuenta ') + (inv.username || '') +
+      ' · caduca en ' + (inv.hours || 48) + ' h';
+    document.getElementById('inv-qr').innerHTML = inv.qr || '';
+    document.getElementById('inv-url').value = inv.url || '';
+    openOv('ov-invite');
+  }
+  function copyInv() { const i = document.getElementById('inv-url'); i.select(); navigator.clipboard && navigator.clipboard.writeText(i.value); }
+  async function sendReset() {
+    const r = await post('/admin/invite', { username: EDIT, purpose: 'reset' });
+    if (r.stepup) return; if (!r.ok) return msg('edit-msg', r.error || 'Error', false);
+    showInvite(r.json, true);
+  }
+  async function resendInvite(username) {
+    const r = await post('/admin/invite', { username, purpose: 'activate' });
+    if (r.stepup) return; if (!r.ok) { alert(r.error || 'Error'); return; }
+    showInvite(r.json, false);
+  }
+
+  // ---- Generador ----
+  function makePw(len, up, num, sym) {
+    let set = 'abcdefghijkmnpqrstuvwxyz';
+    if (up) set += 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    if (num) set += '23456789';
+    if (sym) set += '!@#$%&*?+-=';
+    const a = new Uint32Array(len); crypto.getRandomValues(a);
+    let out = ''; for (let i = 0; i < len; i++) out += set[a[i] % set.length];
+    return out;
+  }
+  function genLenLbl() { document.getElementById('gen-len-l').textContent = document.getElementById('gen-len').value; }
+  function gen() {
+    document.getElementById('gen-out').value = makePw(+document.getElementById('gen-len').value,
+      document.getElementById('gen-up').checked, document.getElementById('gen-num').checked, document.getElementById('gen-sym').checked);
+  }
+  let GEN_RESET = false;
+  function openGen(reset) {
+    GEN_RESET = reset;
+    document.getElementById('gen-title').textContent = reset ? '🔑 Restablecer contraseña de ' + EDIT : '🔑 Generador de contraseñas';
+    document.getElementById('gen-sub').textContent = reset
+      ? 'Se guardará hasheada. Cópiala ahora: no se podrá volver a ver.'
+      : 'Genera una contraseña fuerte para entregar al usuario.';
+    document.getElementById('gen-save').classList.toggle('hidden', !reset);
+    document.getElementById('gen-msg').textContent = '';
+    gen(); openOv('ov-gen');
+  }
+  function copyGen() { const i = document.getElementById('gen-out'); i.select(); navigator.clipboard && navigator.clipboard.writeText(i.value); }
+  async function saveReset() {
+    const pw = document.getElementById('gen-out').value;
+    const r = await post('/admin/user/password', { username: EDIT, password: pw });
+    if (r.stepup) return; if (!r.ok) return msg('gen-msg', r.error || 'Error', false);
+    msg('gen-msg', '✅ Contraseña restablecida. Recuerda entregarla ahora.', true);
+    document.getElementById('gen-save').classList.add('hidden');
+  }
+  document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); }));
+
+  loadData();
+</script>

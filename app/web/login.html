@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylanlock · Acceso</title>
+  <style>
+    __CSS__
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="logo">__LOGO__</div>
+      <div>
+        <h1>Hylanlock</h1>
+        <div class="sub">Introduce tu usuario y contraseña</div>
+      </div>
+    </div>
+    <span class="badge"><span class="dot"></span> Buzon privado</span>
+    <form method="POST" action="/login">
+      <input type="text" class="inp" name="username" placeholder="Usuario" autofocus autocomplete="username">
+      <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password">
+      __ERR__
+      <label
+        style="display:flex;align-items:center;gap:9px;margin-top:15px;font-size:.85rem;color:var(--muted);cursor:pointer">
+        <input type="checkbox" name="remember" style="width:auto;margin:0">
+        Recordar sesión <span style="color:var(--faint)">(no marcar en equipos compartidos)</span>
+      </label>
+      <button type="submit">Entrar</button>
+    </form>
+    <div class="sub" style="margin-top:16px;text-align:center">
+      Acceso privado · las cuentas las gestiona el administrador.</div>
+  </div>
+</body>
+
+</html>

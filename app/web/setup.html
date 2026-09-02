@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylanlock · Instalación</title>
+  <style>
+    __CSS__
+    .card { max-width: 520px; }
+    .step { margin-top: var(--sp-5); }
+    .step .n { display: inline-flex; align-items: center; justify-content: center; width: 22px;
+      height: 22px; border-radius: 50%; background: var(--accent-grad); color: #fff; font-size: .78rem;
+      font-weight: 800; margin-right: 8px; }
+    .step h3 { display: flex; align-items: center; font-size: .95rem; }
+    .hint { margin-top: 6px; font-size: .8rem; color: var(--faint); }
+    textarea { width: 100%; margin-top: var(--sp-3); min-height: 90px; padding: 12px 14px;
+      border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface-2);
+      color: var(--text); font-family: var(--mono); font-size: .8rem; resize: vertical; }
+    textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="logo">🚀</div>
+      <div>
+        <h1>Bienvenido a Hylanlock</h1>
+        <div class="sub">Vamos a configurar tu instalación. Solo se hace una vez.</div>
+      </div>
+    </div>
+    <span class="badge"><span class="dot"></span> Primer arranque · red local</span>
+    __ERR__
+    <form method="POST" action="/setup">
+      <div class="step">
+        <h3><span class="n">1</span> Crea tu cuenta de administrador</h3>
+        <div class="hint">Con ella gestionarás usuarios, departamentos y la licencia.</div>
+        <input class="inp" type="text" name="username" placeholder="Usuario admin (ej: carlos.admin)"
+          autocomplete="off" autofocus required>
+        <input type="password" name="password" placeholder="Contraseña (mín. __MINLEN__ caracteres)"
+          autocomplete="new-password" minlength="__MINLEN__" required style="margin-top:12px">
+        <input type="password" name="password2" placeholder="Repite la contraseña"
+          autocomplete="new-password" minlength="__MINLEN__" required style="margin-top:12px">
+      </div>
+      <div class="step">
+        <h3><span class="n">2</span> Instala tu licencia <span style="color:var(--faint);font-weight:400;margin-left:6px">(opcional ahora)</span></h3>
+        <div class="hint">Pega la licencia de prueba que recibiste. Si la dejas vacía, podrás ponerla
+          después en el panel de administración.</div>
+        <textarea name="license" placeholder="Pega aquí tu licencia (license.key)…" spellcheck="false"></textarea>
+      </div>
+      <button type="submit">🚀 Crear administrador y empezar</button>
+    </form>
+  </div>
+</body>
+
+</html>

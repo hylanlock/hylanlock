@@ -1,0 +1,43 @@
+<!-- Fragmento de contenido: REGISTRO de actividad. Lo envuelve layout.html (shell + sidebar). -->
+<style>
+  .summary { margin-top: 14px; font-size: .8rem; color: var(--muted); }
+  .filtros { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end;
+    margin: 0 0 14px; padding: 14px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 12px; }
+  .filtros label { display: flex; flex-direction: column; gap: 4px;
+    font-size: .74rem; color: var(--muted); }
+  .filtros label.ancho { flex: 1; min-width: 180px; }
+  .filtros input, .filtros select { font: inherit; font-size: .85rem; padding: 6px 8px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; }
+  .filtros .acciones { display: flex; gap: 8px; align-items: center; }
+  .filtros .btn2 { font-size: .82rem; padding: 7px 12px; }
+</style>
+
+<div class="content-head">
+  <div class="logo">📊</div>
+  <div>
+    <h1>Registro</h1>
+    <div class="sub">Actividad del sistema</div>
+  </div>
+</div>
+<div class="summary">__SUMMARY__</div>
+
+<section class="panel">
+  __FILTROS__
+  <div class="tblwrap" style="margin-top:0">
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha y hora</th>
+          <th>Evento</th>
+          <th>Usuario</th>
+          <th>Origen</th>
+          <th>Detalle</th>
+          <th>Tamaño</th>
+        </tr>
+      </thead>
+      <tbody>__ROWS__</tbody>
+    </table>
+  </div>
+</section>

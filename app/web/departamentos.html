@@ -1,0 +1,75 @@
+<!-- Fragmento de contenido: DEPARTAMENTOS. Lo envuelve layout.html (shell + sidebar). -->
+<style>
+  .dlist {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .dcard {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 16px;
+    transition: border-color .15s, transform .12s, box-shadow .15s;
+  }
+  .dcard:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .10);
+  }
+  .dcard .ic { font-size: 26px; }
+  .dcard .dn { font-weight: 700; margin-top: 8px; color: var(--text); }
+  .dcard .dr { font-size: .76rem; color: var(--muted); margin-top: 3px; }
+</style>
+
+<div class="content-head">
+  <div class="logo">🏢</div>
+  <div>
+    <h1>Departamentos</h1>
+    <div class="sub">Tus espacios locales compartidos</div>
+  </div>
+</div>
+<span class="badge"><span class="dot"></span> Solo red local</span>
+
+<div class="dlist" id="dlist">
+  <div class="empty">Cargando…</div>
+</div>
+
+<div id="subwrap" style="display:none">
+  <h2 class="sec">📁 Carpetas concretas</h2>
+  <div class="sub" style="font-size:.82rem">Subcarpetas a las que tienes acceso, aunque no seas del departamento.</div>
+  <div class="dlist" id="slist"></div>
+</div>
+
+<script>
+  async function load() {
+    try {
+      const r = await fetch('/api/departamentos'); const ds = await r.json();
+      const box = document.getElementById('dlist');
+      if (!ds.length) { box.innerHTML = '<div class="empty">No tienes departamentos asignados. Habla con tu administrador.</div>'; }
+      else box.innerHTML = ds.map(d => `<a class="dcard" href="/dep/${encodeURIComponent(d.slug)}">
+  <div class="ic">🏢</div><div class="dn">${d.name}</div>
+  <div class="dr">${d.role === 'head' ? 'Jefe de departamento' : (d.role === 'all' ? 'Acceso total' : 'Miembro')}</div></a>`).join('');
+    } catch (e) { }
+  }
+  // Subcarpetas: un depositario puede tener acceso a una SIN pertenecer al departamento, así que
+  // necesitan su propia entrada o no habría forma de llegar a ellas.
+  async function loadSubs() {
+    try {
+      const r = await fetch('/api/subcarpetas'); const ss = await r.json();
+      if (!ss.length) return;
+      document.getElementById('subwrap').style.display = 'block';
+      document.getElementById('slist').innerHTML = ss.map(s => {
+        const que = s.can_list ? (s.can_upload ? 'Ver y subir' : 'Solo lectura') : 'Buzón de entrega · solo dejar';
+        return `<a class="dcard" href="/dep/${encodeURIComponent(s.dept_slug)}/sub/${encodeURIComponent(s.slug)}">
+  <div class="ic">${s.can_list ? '📁' : '📥'}</div><div class="dn">${s.name}</div>
+  <div class="dr">${s.dept_name} · ${que}</div></a>`;
+      }).join('');
+    } catch (e) { }
+  }
+  load(); loadSubs();
+</script>
