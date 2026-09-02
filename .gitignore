@@ -49,5 +49,10 @@ PRUEBA-AD-WINDOWS.md
 # Paquete generado del agente (se reconstruye con agente/empaquetar.py)
 agente/dist/
 
+# Configuración del agente: contiene el TOKEN de dispositivo (un secreto). Cada equipo genera
+# la suya con `--init`. NO se sube nunca (ni la del creador ni la de un cliente).
+hylanlock_agente.json
+**/hylanlock_agente.json
+
 # Release empaquetado (se regenera con tools/empaquetar-release.py)
 dist-release/

@@ -24,6 +24,14 @@ import sys
 import tempfile
 import zipapp
 
+# La consola de Windows suele ser cp1252 y no sabe imprimir emojis (✅/📦): sin esto, los mensajes
+# de abajo hacían caer el empaquetador con UnicodeEncodeError. Salida a UTF-8 con reemplazo.
+for _flujo in (sys.stdout, sys.stderr):
+    try:
+        _flujo.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 AQUI = os.path.dirname(os.path.abspath(__file__))
 ORIGEN = os.path.join(AQUI, "hylanlock_agente.py")
 SALIDA = os.path.join(AQUI, "dist", "hylanlock-agente.pyz")

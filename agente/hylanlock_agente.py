@@ -46,8 +46,27 @@ TROZO = 1024 * 256          # 256 KB por lectura al descargar
 
 
 # --------------------------------------------------------------------------- utilidades
+# En Windows la consola suele ser cp1252 y no sabe imprimir emojis (✅/⚠️): sin esto, un mensaje
+# con un emoji hacía CAER al agente con UnicodeEncodeError. Reconfiguramos la salida a UTF-8 con
+# reemplazo. Con pythonw (arranque automático, sin ventana) sys.stdout puede ser None: se ignora.
+for _flujo in (sys.stdout, sys.stderr):
+    try:
+        _flujo.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+
 def log(msg):
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+    linea = f"[{time.strftime('%H:%M:%S')}] {msg}"
+    try:
+        print(linea, flush=True)
+    except Exception:
+        # Consola que no admite el carácter, o sin salida (pythonw): degradar a ASCII sin romper.
+        # log() JAMÁS debe tumbar al agente.
+        try:
+            print(linea.encode("ascii", "replace").decode("ascii"), flush=True)
+        except Exception:
+            pass
 
 
 def sha256_fichero(ruta):
