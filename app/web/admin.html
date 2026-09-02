@@ -33,11 +33,8 @@
     background: var(--accent-weak); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
   .tag-boss { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn);
     border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
-  .mini { padding: 7px 12px; border-radius: 9px; font-size: .82rem; font-weight: 700; cursor: pointer;
-    background: var(--surface); color: var(--text); border: 1px solid var(--border); margin: 0; width: auto; box-shadow: none; }
-  .mini:hover { background: var(--surface-3); filter: none; }
-  .mini.danger { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err);
-    border-color: color-mix(in srgb, var(--err) 32%, transparent); }
+  /* .mini y .mini.danger están ahora en styles.css (compartido), para que funcionen también en
+     Mi perfil y donde haga falta. Aquí ya no se redefinen. */
   .field { margin-top: var(--sp-4); }
   .field > label { font-size: .78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .field input[type=text], .field select { width: 100%; margin-top: 6px; padding: 11px 13px; border-radius: 10px;
@@ -151,7 +148,7 @@
       <b>⚠️ Copia la clave ahora: no se volverá a mostrar.</b>
       <div class="genout" style="margin-top:8px">
         <input type="text" id="sv-key-val" readonly>
-        <button class="mini" onclick="copiaClave()">📋 Copiar</button>
+        <button class="mini" onclick="copiaClave(this)">📋 Copiar</button>
       </div>
     </div>
     <div id="sv-msg" class="msg"></div>
@@ -247,7 +244,7 @@
     <h3 id="inv-title">🎟️ Enlace de invitación</h3>
     <div class="sub" id="inv-sub" style="margin-top:4px"></div>
     <div style="text-align:center;margin-top:14px" id="inv-qr"></div>
-    <div class="genout"><input type="text" id="inv-url" readonly><button class="mini" onclick="copyInv()">📋 Copiar</button></div>
+    <div class="genout"><input type="text" id="inv-url" readonly><button class="mini" onclick="copyInv(this)">📋 Copiar</button></div>
     <div class="sub" style="margin-top:10px">⚠️ Este enlace solo se muestra ahora. Entrégaselo al usuario (en persona, chat interno o el QR). Caduca y es de un solo uso.</div>
     <div class="editrow" style="justify-content:flex-end">
       <button class="btn-primary" onclick="closeOv('ov-invite')">Hecho</button>
@@ -260,7 +257,7 @@
   <div class="modal">
     <h3 id="gen-title">🔑 Generador de contraseñas</h3>
     <div class="sub" id="gen-sub" style="margin-top:4px"></div>
-    <div class="genout"><input type="text" id="gen-out" readonly><button class="mini" onclick="copyGen()">📋 Copiar</button></div>
+    <div class="genout"><input type="text" id="gen-out" readonly><button class="mini" onclick="copyGen(this)">📋 Copiar</button></div>
     <div class="genopts">
       <div class="line">Longitud: <b id="gen-len-l">16</b><input type="range" id="gen-len" min="8" max="40" value="16" oninput="genLenLbl();gen()"></div>
       <label class="line"><input type="checkbox" id="gen-up" checked onchange="gen()"> Mayúsculas (A-Z)</label>
@@ -449,9 +446,9 @@
     document.getElementById('sv-key').style.display = 'block';
     await cargaSvc();
   }
-  function copiaClave() {
+  function copiaClave(btn) {
     const i = document.getElementById('sv-key-val'); i.select();
-    if (navigator.clipboard) navigator.clipboard.writeText(i.value);
+    hylCopiar(i.value, btn);
   }
   async function revocaClave(name, id) {
     if (!confirm('¿Revocar esta clave? La integración dejará de funcionar inmediatamente.')) return;
@@ -658,7 +655,7 @@
     document.getElementById('inv-url').value = inv.url || '';
     openOv('ov-invite');
   }
-  function copyInv() { const i = document.getElementById('inv-url'); i.select(); navigator.clipboard && navigator.clipboard.writeText(i.value); }
+  function copyInv(btn) { const i = document.getElementById('inv-url'); i.select(); hylCopiar(i.value, btn); }
   async function sendReset() {
     const r = await post('/admin/invite', { username: EDIT, purpose: 'reset' });
     if (r.stepup) return; if (!r.ok) return msg('edit-msg', r.error || 'Error', false);
@@ -696,7 +693,7 @@
     document.getElementById('gen-msg').textContent = '';
     gen(); openOv('ov-gen');
   }
-  function copyGen() { const i = document.getElementById('gen-out'); i.select(); navigator.clipboard && navigator.clipboard.writeText(i.value); }
+  function copyGen(btn) { const i = document.getElementById('gen-out'); i.select(); hylCopiar(i.value, btn); }
   async function saveReset() {
     const pw = document.getElementById('gen-out').value;
     const r = await post('/admin/user/password', { username: EDIT, password: pw });

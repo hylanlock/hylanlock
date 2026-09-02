@@ -303,6 +303,29 @@ button:disabled {
    box-shadow: none;
 }
 
+/* Botón compacto en línea (copiar, revocar…). Va en el CSS COMPARTIDO a propósito: antes vivía
+   solo dentro de admin.html, así que en otras páginas (p. ej. Mi perfil) el botón heredaba el
+   estilo base 'width:100%' y aplastaba el texto contiguo (el nombre del equipo salía en vertical). */
+.mini {
+   margin-top: 0;
+   width: auto;
+   padding: 7px 12px;
+   border-radius: 9px;
+   font-size: .82rem;
+   font-weight: 700;
+   cursor: pointer;
+   background: var(--surface);
+   color: var(--text);
+   border: 1px solid var(--border);
+   box-shadow: none;
+}
+.mini:hover { background: var(--surface-3); filter: none; box-shadow: none; }
+.mini.danger {
+   background: color-mix(in srgb, var(--err) 14%, transparent);
+   color: var(--err);
+   border-color: color-mix(in srgb, var(--err) 32%, transparent);
+}
+
 a {
    color: var(--accent);
 }

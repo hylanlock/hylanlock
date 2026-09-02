@@ -53,7 +53,7 @@
   <b>⚠️ Cópialo ahora: no se volverá a mostrar.</b>
   <div class="genout" style="margin-top:8px">
     <input type="text" id="tk-value" readonly>
-    <button class="mini" onclick="copiaToken()">📋 Copiar</button>
+    <button class="mini" onclick="copiaToken(this)">📋 Copiar</button>
   </div>
 </div>
 <div class="plist" id="tokens"><div class="empty">Cargando…</div></div>
@@ -144,9 +144,9 @@
     document.getElementById('tk-name').value = '';
     cargaTokens();
   }
-  function copiaToken() {
+  function copiaToken(btn) {
     const i = document.getElementById('tk-value'); i.select();
-    if (navigator.clipboard) navigator.clipboard.writeText(i.value);
+    hylCopiar(i.value, btn);
   }
   async function revoca(id) {
     if (!confirm('¿Revocar este equipo? Su agente dejará de sincronizar inmediatamente.')) return;

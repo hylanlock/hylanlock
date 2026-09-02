@@ -174,7 +174,7 @@
       if (!files.length) { box.innerHTML = '<div class="empty">Aun no hay archivos aqui…</div>'; return; }
       box.innerHTML = files.map(f => {
         const sh = f.sha256 ? `<div class="fh" title="SHA-256: ${f.sha256}&#10;(clic para copiar)"
-    onclick="navigator.clipboard&&navigator.clipboard.writeText('${f.sha256}')">🔒 ${f.sha256.slice(0, 12)}…</div>` : '';
+    onclick="hylCopiar('${f.sha256}', this)">🔒 ${f.sha256.slice(0, 12)}…</div>` : '';
         return `<div class="frow"><span class="fic">${icon(f.name)}</span>
   <span class="fn">${f.name}${sh}</span><span class="fs">${fmt(f.size)}</span>
   <a class="dl" href="__DLBASE__/download?file=${encodeURIComponent(f.name)}" download="${f.name}">⬇️</a></div>`;

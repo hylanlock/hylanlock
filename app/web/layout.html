@@ -42,6 +42,40 @@
       __CONTENT__
     </div>
   </main>
+
+  <script>
+    // Copia al portapapeles ROBUSTA. La API navigator.clipboard SOLO existe en contexto seguro
+    // (HTTPS o localhost). Hylanlock se usa por HTTP en la red local, donde NO existe: sin este
+    // respaldo, los botones "Copiar" no hacían nada de nada. Se cae al método clásico
+    // (execCommand con un textarea temporal), que sí funciona por HTTP. Con feedback visual.
+    function hylCopiar(texto, btn) {
+      var aviso = function () {
+        if (!btn) return;
+        var prev = btn.textContent;
+        btn.textContent = '✅ Copiado';
+        setTimeout(function () { btn.textContent = prev; }, 1200);
+      };
+      var respaldo = function () {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = texto;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.top = '-1000px';
+          document.body.appendChild(ta);
+          ta.select();
+          var ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          if (ok) aviso();
+        } catch (e) { /* si ni así, no rompemos nada */ }
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(texto).then(aviso, respaldo);
+      } else {
+        respaldo();
+      }
+    }
+  </script>
 </body>
 
 </html>
