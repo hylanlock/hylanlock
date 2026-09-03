@@ -1,0 +1,3 @@
+# Los scripts de shell SIEMPRE con saltos de línea LF: con CRLF (Windows) fallan al
+# ejecutarse en Linux (p. ej. 'curl ... | sh' del instalador). Se normalizan al hacer commit.
+*.sh text eol=lf
