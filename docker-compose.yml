@@ -1,9 +1,10 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Hylanlock — despliegue self-hosted con Docker Compose.
 #
-#   1) cp .env.example .env   (y rellena tus valores: contraseña admin, red LAN…)
-#   2) docker compose up -d --build
-#   3) abre  http://IP-DEL-SERVIDOR:8000  y entra con el admin
+#   1) docker compose up -d --build          (el .env es OPCIONAL: los valores por defecto ya sirven)
+#   2) abre  http://IP-DEL-SERVIDOR:8000  y sigue el asistente (crear admin + licencia)
+#
+#   Para personalizar (puerto, nombre, red LAN, AD…):  cp .env.example .env  y edítalo.
 # ─────────────────────────────────────────────────────────────────────────────
 services:
   hylanlock:
@@ -24,7 +25,11 @@ services:
     # distingue quién está en la LAN). Recomendado en servidores Linux.
     network_mode: host
 
-    env_file: .env
+    # El .env es OPCIONAL: si no existe, el producto usa sus valores por defecto (puerto 8000, todas
+    # las redes privadas como LAN…). Crea uno (cp .env.example .env) solo si quieres personalizar.
+    env_file:
+      - path: .env
+        required: false
     environment:
       HYLANLOCK_DATA_DIR: /data      # los datos siempre en el volumen
 
