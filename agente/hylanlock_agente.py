@@ -151,6 +151,9 @@ def guardar_estado(destino, archivos):
     """Escribe el registro de forma atómica: o queda el nuevo entero, o se queda el anterior."""
     tmp = ruta_estado(destino) + ".part"
     try:
+        # La carpeta destino puede no existir aún (primera pasada, o servidor sin carpetas que
+        # ofrecer): sin esto, escribir el estado fallaba con "No such file or directory".
+        os.makedirs(destino, exist_ok=True)
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump({"version": 2, "archivos": archivos}, f, indent=2, ensure_ascii=False)
         os.replace(tmp, ruta_estado(destino))
