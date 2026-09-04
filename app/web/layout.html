@@ -14,12 +14,15 @@
 <body class="app">
   <!-- ===== Barra lateral (shell compartido; lo rellena el servidor según el rol) ===== -->
   <aside class="sidebar">
+    <!-- Interruptor del menú móvil (hamburguesa). Solo CSS: en escritorio se ignora. -->
+    <input type="checkbox" id="hyl-nav" class="nav-toggle" hidden>
     <div class="side-brand">
       <div class="logo">__LOGO__</div>
       <div>
         <div class="nm">__BRAND__</div>
         <div class="tag">__ORG__</div>
       </div>
+      <label for="hyl-nav" class="nav-burger" aria-label="Abrir o cerrar el menú">☰</label>
     </div>
     <nav class="nav">__NAV__</nav>
     <div class="side-foot">

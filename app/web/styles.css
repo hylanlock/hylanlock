@@ -469,6 +469,9 @@ body.app {
    border-color: color-mix(in srgb, var(--accent) 28%, transparent); font-weight: 700;
 }
 
+/* Botón hamburguesa: oculto en escritorio, visible solo en móvil (ver @media de abajo). */
+.nav-burger { display: none; }
+
 .side-foot { margin-top: auto; padding-top: var(--sp-3); border-top: 1px solid var(--border);
    display: flex; flex-direction: column; gap: var(--sp-2); }
 .user { display: flex; align-items: center; gap: 10px; padding: 6px 8px; min-width: 0; }
@@ -540,12 +543,21 @@ body.app #hyl-theme-btn { top: 18px; right: 18px; }
 /* --- Responsive: en pantallas estrechas el sidebar pasa a barra superior --- */
 @media (max-width: 820px) {
    body.app { grid-template-columns: 1fr; }
-   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center;
+   /* El sidebar pasa a barra superior pegajosa: marca a la izquierda + botón ☰ a la derecha. */
+   .sidebar { position: sticky; top: 0; z-index: 20; height: auto; flex-direction: row; flex-wrap: wrap;
+      align-items: center; padding: 8px 12px;
       border-right: none; border-bottom: 1px solid var(--border); box-shadow: none; }
-   .side-brand { padding: 6px 8px; }
-   .nav { flex-direction: row; flex-wrap: wrap; }
-   .nav-lbl { display: none; }
-   .side-foot { margin: 0 0 0 auto; padding: 0; border: none; flex-direction: row; align-items: center; }
+   .side-brand { padding: 6px 4px; flex: 1; min-width: 0; }
+   .side-brand .logo { width: 34px; height: 34px; font-size: 16px; }
+   .nav-burger { display: inline-flex; align-items: center; justify-content: center; flex: none;
+      width: 44px; height: 44px; border-radius: 10px; font-size: 22px; cursor: pointer;
+      color: var(--text); background: var(--surface-2); border: 1px solid var(--border); }
+   /* Menú y pie: ocultos por defecto; se despliegan (a lo ancho) al marcar la hamburguesa. */
+   .nav, .side-foot { display: none; width: 100%; }
+   #hyl-nav:checked ~ .nav { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+   #hyl-nav:checked ~ .side-foot { display: flex; flex-direction: column; gap: var(--sp-2);
+      margin: 8px 0 4px; padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+   .nav a { font-size: 1rem; padding: 12px 12px; }   /* filas cómodas para el dedo */
    .steps { grid-template-columns: 1fr; }
 }
 
