@@ -93,7 +93,3 @@ Hylanlock se publica bajo la **Business Source License 1.1** (ver [`LICENSE`](LI
 - El código se **abre automáticamente** (Apache 2.0) en la *Change Date* indicada en la licencia.
 
 Para licencias comerciales o cualquier duda: **hylanlock@gmail.com**.
-
----
-
-*Hylanlock es un proyecto de Nicolás Muñoz Rodríguez.*
