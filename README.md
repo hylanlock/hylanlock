@@ -45,7 +45,7 @@ más control sobre **cómo y dónde** se mueven sus archivos:
   dentro de la carpeta.
 - **Departamentos** — cada uno con sus reglas; pertenecer a la empresa no da acceso: el acceso se concede.
 - **API para integraciones** — tu ERP o tus scripts depositan y leen archivos con una cuenta de servicio
-  y los permisos de siempre. Ver [`API.md`](API.md).
+  y los permisos de siempre. Ver [`API.md`](docs/API.md).
 - **Agente de sincronización** — los archivos llegan solos al PC del usuario, con el SHA-256 comprobado
   antes de escribirlos (nunca ejecuta nada).
 - **Active Directory / LDAP** (opcional) — entrada con las credenciales de dominio; los grupos deciden
@@ -61,14 +61,14 @@ más control sobre **cómo y dónde** se mueven sus archivos:
 - **Solo biblioteca estándar de Python** en el núcleo (sin dependencias): superficie de ataque pequeña.
 - **Código auditable** — por eso es source-available: puedes leer exactamente qué hace.
 - Sesiones firmadas (HMAC), CSRF, contraseñas con PBKDF2, subida/descarga con protección contra
-  *path traversal*, y un único punto de autorización. Ver [`HTTPS.md`](HTTPS.md) para servir con TLS.
+  *path traversal*, y un único punto de autorización. Ver [`HTTPS.md`](docs/HTTPS.md) para servir con TLS.
 
 > Como todo software, Hylanlock no promete seguridad absoluta: la seguridad real depende también de
 > cómo lo despliegue y configure cada organización.
 
 ## Probarlo
 
-Requiere Docker. En resumen (guía completa en [`DESPLIEGUE.md`](DESPLIEGUE.md)):
+Requiere Docker. En resumen (guía completa en [`DESPLIEGUE.md`](docs/DESPLIEGUE.md)):
 
 ```bash
 cp .env.example .env      # ajusta tus valores
@@ -76,7 +76,7 @@ docker compose up -d      # arranca
 ```
 
 Al abrirlo por primera vez, un **asistente** te guía para crear el administrador e instalar tu licencia
-de prueba. Copias de seguridad en [`BACKUPS.md`](BACKUPS.md); servir por HTTPS en [`HTTPS.md`](HTTPS.md).
+de prueba. Copias de seguridad en [`BACKUPS.md`](docs/BACKUPS.md); servir por HTTPS en [`HTTPS.md`](docs/HTTPS.md).
 
 ## Estado
 
