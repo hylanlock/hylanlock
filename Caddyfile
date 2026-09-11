@@ -15,7 +15,7 @@ hylanlock.empresa.local {
 
 	# CERTIFICADO. Por defecto, CA interna de Caddy: cifra sin configurar nada.
 	# Los navegadores avisarán hasta que instaléis la CA de Caddy en los equipos
-	# (se explica en HTTPS.md) o aceptéis la excepción una vez.
+	# (se explica en docs/HTTPS.md) o aceptéis la excepción una vez.
 	tls internal
 
 	# ── ALTERNATIVA: certificado propio de la empresa (sin avisos) ──

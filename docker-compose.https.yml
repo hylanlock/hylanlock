@@ -11,7 +11,7 @@
 #     (el candado LAN sigue funcionando) leyendo X-Forwarded-For.
 #   · Caddy publica el 443 (HTTPS) y el 80 (redirige a HTTPS).
 #
-# Antes de levantar: edita el nombre en el Caddyfile.  Guía completa en HTTPS.md.
+# Antes de levantar: edita el nombre en el Caddyfile.  Guía completa en docs/HTTPS.md.
 # ─────────────────────────────────────────────────────────────────────────────
 services:
   hylanlock:

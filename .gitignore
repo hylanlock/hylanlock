@@ -43,6 +43,11 @@ WEB/out/
 cosillas.md
 PRUEBA-AD-WINDOWS.md
 
+# Entregable de cliente: la guía de instalación se genera aparte y vive en "A entregar/",
+# no es código fuente. No se sube al repo.
+Guia-de-instalacion-*.docx
+Guia-de-instalacion-*.pdf
+
 # Varios
 *.bak
 
