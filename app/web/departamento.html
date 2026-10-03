@@ -21,6 +21,10 @@
   .notice-box { margin-top: 14px; background: var(--surface-2);
     border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
     border-radius: 13px; padding: 12px 15px; font-size: .86rem; color: var(--text); }
+  .fsearch { width: 100%; box-sizing: border-box; margin-top: 10px; padding: 9px 12px;
+    font-size: .9rem; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px; }
+  .fsearch:focus { outline: none; border-color: var(--accent); }
 </style>
 
 <div id="dep-view">
@@ -52,6 +56,7 @@
 
     <div id="files-part" style="display:__D_LS__">
       <h2 class="sec">📥 Archivos <span id="count"></span></h2>
+      <input type="search" id="fsearch" class="fsearch" placeholder="🔎 Buscar por nombre…" autocomplete="off">
       <div class="flist" id="flist">
         <div class="empty">Cargando…</div>
       </div>
@@ -167,20 +172,32 @@
     if (['mp3', 'wav', 'ogg', 'm4a'].includes(e)) return '🎵';
     if (['exe', 'msi', 'apk'].includes(e)) return '⚙️'; return '📄';
   }
-  async function refreshList() {
-    try {
-      const r = await fetch('__APIBASE__'); const files = await r.json();
-      const box = document.getElementById('flist'); document.getElementById('count').textContent = '(' + files.length + ')';
-      if (!files.length) { box.innerHTML = '<div class="empty">Aun no hay archivos aqui…</div>'; return; }
-      box.innerHTML = files.map(f => {
-        const sh = f.sha256 ? `<div class="fh" title="SHA-256: ${f.sha256}&#10;(clic para copiar)"
+  let allFiles = [];
+  function rowHtml(f) {
+    const sh = f.sha256 ? `<div class="fh" title="SHA-256: ${f.sha256}&#10;(clic para copiar)"
     onclick="hylCopiar('${f.sha256}', this)">🔒 ${f.sha256.slice(0, 12)}…</div>` : '';
-        return `<div class="frow"><span class="fic">${icon(f.name)}</span>
+    return `<div class="frow"><span class="fic">${icon(f.name)}</span>
   <span class="fn">${f.name}${sh}</span><span class="fs">${fmt(f.size)}</span>
   <a class="dl" href="__DLBASE__/download?file=${encodeURIComponent(f.name)}" download="${f.name}">⬇️</a></div>`;
-      }).join('');
+  }
+  // Filtro por nombre en el navegador: instantáneo y sin recargar (la lista ya está cargada).
+  function renderList() {
+    const box = document.getElementById('flist');
+    const q = (document.getElementById('fsearch').value || '').trim().toLowerCase();
+    const shown = q ? allFiles.filter(f => (f.name || '').toLowerCase().includes(q)) : allFiles;
+    document.getElementById('count').textContent =
+      q ? `(${shown.length} de ${allFiles.length})` : `(${allFiles.length})`;
+    if (!allFiles.length) { box.innerHTML = '<div class="empty">Aun no hay archivos aqui…</div>'; return; }
+    if (!shown.length) { box.innerHTML = '<div class="empty">Ningun archivo coincide con la busqueda.</div>'; return; }
+    box.innerHTML = shown.map(rowHtml).join('');
+  }
+  async function refreshList() {
+    try {
+      const r = await fetch('__APIBASE__'); allFiles = await r.json();
+      renderList();
     } catch (e) { }
   }
+  document.getElementById('fsearch').addEventListener('input', renderList);
   // Solo se pide el listado si el usuario tiene 'files.list'; si no, ni se intenta (daría 403).
   const CAN_LIST = __CAN_LIST__;
   if (CAN_LIST) { refreshList(); setInterval(refreshList, 4000); }

@@ -94,6 +94,31 @@
     <button class="abtn ghost" onclick="openGen(false)">🔑 Generador de contraseñas</button>
     <a class="abtn ghost" href="/admin/licencia" style="text-decoration:none;display:inline-flex;align-items:center">🪪 Licencia</a>
   </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2 class="sec">🛡️ Seguridad de subidas — extensiones bloqueadas</h2>
+    <p style="font-size:.85rem;color:var(--muted);margin:6px 0 10px">
+      Marca los tipos de archivo que quieres <b>rechazar al subir</b>. Es una capa de higiene contra
+      ejecutables/scripts que alguien podría abrir por error; renombrar la extensión la salta, así que
+      no sustituye a un antivirus.
+    </p>
+    <div id="ext-groups"></div>
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;font-size:.85rem;color:var(--accent)">➕ Otras extensiones (avanzado)</summary>
+      <p style="font-size:.82rem;color:var(--muted);margin:8px 0 6px">
+        Añade extensiones que no estén en la lista de arriba, separadas por comas (sin el punto).
+      </p>
+      <input id="ext-otras" type="text" style="width:100%;box-sizing:border-box;font-family:monospace;
+        background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 11px"
+        placeholder="ej. iso, apk, run">
+    </details>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="abtn primary" onclick="saveExt()">Guardar</button>
+      <button class="abtn ghost" onclick="extNone()">Desmarcar todo</button>
+      <span id="ext-msg" style="font-size:.85rem;color:var(--muted)"></span>
+    </div>
+  </div>
+
   <div id="requests-wrap" style="display:none">
     <h2 class="sec">🙋 Solicitudes de acceso pendientes</h2>
     <div id="requests" class="flist"></div>
@@ -297,9 +322,62 @@
       fetch('/api/admin/users'), fetch('/api/admin/departments'), fetch('/api/admin/config')]);
     USERS = await ru.json(); DEPTS = await rd.json();
     try { CFG = await rc.json(); } catch (e) { }
+    renderExtGroups();
+    setExtFromConfig();
     applyPolicy();
     renderCounts();
     loadRequests();
+  }
+  const EXT_GROUPS = [
+    { t: 'Ejecutables de Windows', i: [['exe', 'Programa (.exe)'], ['msi', 'Instalador (.msi)'], ['msp', 'Parche (.msp)'], ['com', 'MS-DOS (.com)'], ['scr', 'Salvapantallas (.scr)'], ['pif', 'Acceso MS-DOS (.pif)'], ['cpl', 'Panel de control (.cpl)'], ['bat', 'Lote (.bat)'], ['cmd', 'Comandos (.cmd)']] },
+    { t: 'Scripts', i: [['js', 'JavaScript (.js)'], ['jse', 'JScript cifrado (.jse)'], ['vbs', 'VBScript (.vbs)'], ['vbe', 'VBScript cifrado (.vbe)'], ['wsf', 'Windows Script (.wsf)'], ['wsh', 'Script Host (.wsh)'], ['ps1', 'PowerShell (.ps1)'], ['psm1', 'Módulo PS (.psm1)'], ['hta', 'App HTML (.hta)'], ['sh', 'Shell Unix (.sh)']] },
+    { t: 'Sistema y atajos', i: [['dll', 'Librería (.dll)'], ['sys', 'Controlador (.sys)'], ['scf', 'Comando Explorer (.scf)'], ['msc', 'Consola MMC (.msc)'], ['reg', 'Registro (.reg)'], ['lnk', 'Acceso directo (.lnk)'], ['inf', 'Instalación (.inf)'], ['jar', 'Java (.jar)']] },
+    { t: 'Office con macros (riesgo alto, a veces legítimo)', i: [['docm', 'Word macros (.docm)'], ['xlsm', 'Excel macros (.xlsm)'], ['xlsb', 'Excel binario (.xlsb)'], ['pptm', 'PowerPoint macros (.pptm)'], ['dotm', 'Plantilla Word (.dotm)']] },
+  ];
+  function renderExtGroups() {
+    const box = document.getElementById('ext-groups');
+    if (!box || box.dataset.built) return;               // construir una sola vez
+    box.innerHTML = EXT_GROUPS.map(g =>
+      `<div style="margin-top:12px"><div style="font-size:.8rem;color:var(--muted);margin-bottom:6px">${g.t}</div>` +
+      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px 12px">` +
+      g.i.map(([e, l]) => `<label style="display:flex;gap:7px;align-items:center;font-size:.85rem;cursor:pointer">` +
+        `<input type="checkbox" value="${e}"> ${l}</label>`).join('') + `</div></div>`).join('');
+    box.dataset.built = '1';
+  }
+  function setExtFromConfig() {
+    const blocked = new Set((CFG.blocked_ext || []).map(e => String(e).toLowerCase()));
+    const known = new Set();
+    document.querySelectorAll('#ext-groups input[type=checkbox]').forEach(cb => {
+      known.add(cb.value); cb.checked = blocked.has(cb.value);
+    });
+    document.getElementById('ext-otras').value = [...blocked].filter(e => !known.has(e)).join(', ');
+  }
+  function collectExt() {
+    const picked = [];
+    document.querySelectorAll('#ext-groups input[type=checkbox]:checked').forEach(cb => picked.push(cb.value));
+    const otras = (document.getElementById('ext-otras').value || '').split(',').map(s => s.trim()).filter(Boolean);
+    return picked.concat(otras).join(', ');
+  }
+  function extNone() {
+    document.querySelectorAll('#ext-groups input[type=checkbox]').forEach(cb => cb.checked = false);
+    document.getElementById('ext-otras').value = '';
+  }
+  async function saveExt() {
+    const msg = document.getElementById('ext-msg');
+    msg.style.color = 'var(--muted)'; msg.textContent = 'Guardando…';
+    const r = await post('/admin/config/extensiones', { ext: collectExt() });
+    if (r.stepup) return;
+    if (r.ok && r.json) {
+      CFG.blocked_ext = r.json.blocked_ext || [];
+      setExtFromConfig();
+      msg.style.color = 'var(--ok)';
+      msg.textContent = CFG.blocked_ext.length
+        ? ('✅ Guardado · ' + CFG.blocked_ext.length + ' extensiones bloqueadas')
+        : '✅ Guardado · bloqueo DESACTIVADO';
+    } else {
+      msg.style.color = 'var(--err)';
+      msg.textContent = '❌ ' + (r.error || 'No se pudo guardar');
+    }
   }
   async function loadRequests() {
     let reqs = [];

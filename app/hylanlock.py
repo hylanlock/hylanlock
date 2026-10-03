@@ -726,6 +726,54 @@ def unique_path(folder, filename):
     return candidate
 
 
+# ── Bloqueo de extensiones peligrosas (HIGIENE, no antivirus) ────────────────────────────────
+# Rechaza subir ejecutables/scripts que alguien podría abrir por error y "cagarla" (un .exe que
+# llega disfrazado en un buzón, etc.). Es una capa de HIGIENE/accidentes, NO un antivirus:
+# renombrar la extensión lo salta. Se aplica en la web, la API y el agente de sincronización.
+# El admin puede ajustar la lista con HYLANLOCK_BLOCKED_EXT (separada por comas, REEMPLAZA la de
+# por defecto; ponerla vacía DESACTIVA el bloqueo).
+_BLOCKED_EXT_DEFAULT = ("exe,bat,cmd,com,scr,pif,msi,msp,cpl,jar,js,jse,vbs,vbe,"
+                        "wsf,wsh,hta,ps1,psm1,sh,reg,lnk,inf,dll,sys,scf,msc")
+def _parse_ext(texto):
+    """Lista separada por comas -> conjunto de extensiones normalizadas (minúsculas, sin punto)."""
+    return frozenset(e.strip().lower().lstrip(".") for e in (texto or "").split(",") if e.strip())
+
+
+# Valor por DEFECTO (del .env o la constante). Es la SEMILLA: si el admin no ha guardado nada
+# desde el panel, se usa esto.
+BLOCKED_EXT = _parse_ext(_env("BLOCKED_EXT", _BLOCKED_EXT_DEFAULT))
+
+# Caché de la lista EFECTIVA (default, o lo que el admin guardó en el panel). Se invalida al guardar.
+_blocked_cache = None
+
+
+def blocked_ext_set():
+    """Lista de bloqueo EFECTIVA: lo guardado en el panel (meta 'blocked_ext') si existe; si no, el
+    valor por defecto del .env. Cacheada; se refresca con set_blocked_ext()."""
+    global _blocked_cache
+    if _blocked_cache is None:
+        guardado = db.meta_get("blocked_ext")      # None = nunca tocado desde el panel
+        _blocked_cache = BLOCKED_EXT if guardado is None else _parse_ext(guardado)
+    return _blocked_cache
+
+
+def set_blocked_ext(texto):
+    """Guarda la lista (desde el panel) y refresca la caché. Texto vacío = desactivar el bloqueo."""
+    global _blocked_cache
+    db.meta_set("blocked_ext", texto or "")
+    _blocked_cache = _parse_ext(texto)
+    return _blocked_cache
+
+
+def extension_bloqueada(nombre):
+    """Devuelve la extensión (sin punto) si está en la lista de bloqueo EFECTIVA, o '' si se permite.
+
+    Mira SOLO la última extensión, que es la que decide cómo se abre el archivo:
+    'factura.pdf.exe' -> 'exe' (bloqueada); 'notas.exe.txt' -> 'txt' (permitida)."""
+    ext = os.path.splitext(nombre or "")[1].lower().lstrip(".")
+    return ext if ext in blocked_ext_set() else ""
+
+
 # Cada cuánto se vuelve a barrer la carpeta de trozos incompletos mientras el servicio corre.
 PART_PURGE_EVERY = 3600           # 1 h
 _last_purge = 0.0
@@ -853,11 +901,55 @@ else:
     _ACCENT_STYLE = ""
 
 
+# ── PWA: instalable como app (manifest + service worker + iconos) ─────────────────────────────
+# Permite "Instalar app" en móvil y escritorio → icono propio y ventana sin barra, sin teclear
+# IP:puerto. Los iconos son ficheros en web/ (icon-192.png / icon-512.png); manifest y SW se
+# sirven como rutas públicas en do_GET.
+PWA_MANIFEST = json.dumps({
+    "name": BRAND_NAME,
+    "short_name": BRAND_NAME[:12],
+    "description": "Transferencia de archivos self-hosted, en tu red local.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#0b1120",
+    "theme_color": "#0b1120",
+    "icons": [
+        {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+        {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    ],
+}, ensure_ascii=False).encode("utf-8")
+
+# Service worker MÍNIMO y SEGURO: solo cachea los 3 estáticos de la PWA (para poder instalarse y
+# abrir). Todo lo demás —páginas con login, API, descargas, subidas— va SIEMPRE a la red: nunca
+# se guarda contenido privado en la caché del navegador.
+PWA_SW_JS = (
+    "const C='hylanlock-pwa-v1';"
+    "const A=['/icon-192.png','/icon-512.png','/manifest.webmanifest'];"
+    "self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(A)).catch(()=>{}));self.skipWaiting();});"
+    "self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C).map(x=>caches.delete(x)))));self.clients.claim();});"
+    "self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;"
+    "const u=new URL(e.request.url);if(A.includes(u.pathname)){e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)));}});"
+).encode("utf-8")
+
+# Etiquetas que se inyectan en el <head> y antes de </body> de TODAS las páginas (ver _inject_theme).
+_PWA_HEAD = (
+    '<link rel="manifest" href="/manifest.webmanifest">'
+    '<link rel="icon" href="/icon-192.png">'
+    '<link rel="apple-touch-icon" href="/icon-192.png">'
+    '<meta name="mobile-web-app-capable" content="yes">'
+    '<meta name="apple-mobile-web-app-capable" content="yes">'
+    '<meta name="apple-mobile-web-app-title" content="' + html.escape(BRAND_NAME) + '">'
+)
+_PWA_SW = ('<script>if("serviceWorker" in navigator){window.addEventListener("load",'
+           'function(){navigator.serviceWorker.register("/sw.js").catch(function(){});});}</script>')
+
+
 def _inject_theme(text):
     """Añade el script de tema y el acento de marca en <head>, el botón antes de </body>, y aplica
     el nombre/logo de marca (__BRAND__/__LOGO__) en TODAS las páginas que pasan por aquí."""
-    text = text.replace("<head>", "<head>" + _THEME_HEAD + _ACCENT_STYLE, 1)
-    text = text.replace("</body>", _THEME_TOGGLE + "</body>", 1)
+    text = text.replace("<head>", "<head>" + _THEME_HEAD + _ACCENT_STYLE + _PWA_HEAD, 1)
+    text = text.replace("</body>", _THEME_TOGGLE + _PWA_SW + "</body>", 1)
     text = text.replace("__BRAND__", html.escape(BRAND_NAME)).replace("__LOGO__", html.escape(BRAND_LOGO))
     if BRAND_NAME != "Hylanlock":
         # Rebrand del nombre en textos que aún digan "Hylanlock" (seguro: las clases/ids usan "hyl-").
@@ -1165,6 +1257,7 @@ _GUARD_POST = {
     "/admin/user/password":    {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/user/role":        {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/invite":           {"lan": True, "perm": "users.manage", "elevated": True},
+    "/admin/config/extensiones": {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/licencia":         {"lan": True, "perm": "users.manage"},
     "/perfil/solicitar":       {"lan": True},
     # Despachar avisos sin abrir la carpeta. No hace falta step-up: no concede acceso ni borra
@@ -1909,6 +2002,26 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, b"ok", "text/plain; charset=utf-8")
             return
 
+        # PWA (instalar como app): manifest, service worker e iconos. Son estáticos PÚBLICOS y sin
+        # datos: se piden desde login/setup también, así que van aquí (sin candado LAN ni login).
+        if path == "/manifest.webmanifest":
+            self._send(200, PWA_MANIFEST, "application/manifest+json; charset=utf-8",
+                       extra=[("Cache-Control", "public, max-age=86400")])
+            return
+        if path == "/sw.js":
+            self._send(200, PWA_SW_JS, "application/javascript; charset=utf-8",
+                       extra=[("Cache-Control", "no-cache"), ("Service-Worker-Allowed", "/")])
+            return
+        if path in ("/icon-192.png", "/icon-512.png"):
+            try:
+                with open(os.path.join(WEB_DIR, path.lstrip("/")), "rb") as _f:
+                    _ico = _f.read()
+                self._send(200, _ico, "image/png",
+                           extra=[("Cache-Control", "public, max-age=604800")])
+            except OSError:
+                self._send(404, b"", "text/plain; charset=utf-8")
+            return
+
         # Primer arranque: sin ningún usuario, el asistente de instalación toma el control.
         if not self._configured():
             if path == "/setup":
@@ -2018,7 +2131,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 limit = _pagina_pedida(q)
                 items, siguiente = self._list_dir(
-                    base, limit=limit, after=_cursor_decode(q.get("cursor", [""])[0]))
+                    base, limit=limit, after=_cursor_decode(q.get("cursor", [""])[0]),
+                    query=q.get("q", [""])[0])
                 cuerpo = {
                     "folder": f"{dep}/{sub}" if sub else dep,
                     "files": items,
@@ -2097,7 +2211,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/admin/config":
             # Política de contraseñas (Parte A) para que la UI se adapte a lo que decida la empresa.
             self._json({"method": PW_METHOD, "allow_direct": ALLOW_DIRECT_PW,
-                        "min_password": MIN_PASSWORD, "invite_hours": INVITE_HOURS})
+                        "min_password": MIN_PASSWORD, "invite_hours": INVITE_HOURS,
+                        "blocked_ext": sorted(blocked_ext_set())})
         elif path == "/admin/licencia":
             self._send(200, render_license(self._license()))
         elif path == "/api/admin/license":
@@ -2300,6 +2415,13 @@ class Handler(BaseHTTPRequestHandler):
                 db.log_event("stepup_fail", user=me, origin=self._origin(), ip=self._client_ip())
                 err = '<div class="err-msg">Contraseña incorrecta</div>'
                 self._send(200, render(STEPUP_PAGE, err=err, nxt=nxt))
+        elif path == "/admin/config/extensiones":
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = (self._current_user() or (None,))[0]
+            guardadas = set_blocked_ext(d.get("ext", [""])[0])
+            db.log_event("config_blocked_ext", user=me, origin=self._origin(),
+                         ip=self._client_ip(), detail=f"{len(guardadas)} extensiones bloqueadas")
+            self._json({"ok": True, "blocked_ext": sorted(guardadas)})
         elif path == "/admin/users/add":
             body = self._read_body().decode("utf-8", "replace")
             d = parse_qs(body)
@@ -2619,8 +2741,11 @@ class Handler(BaseHTTPRequestHandler):
         items, _ = self._list_dir(base_dir)
         return items
 
-    def _list_dir(self, base_dir, limit=None, after=None):
+    def _list_dir(self, base_dir, limit=None, after=None, query=None):
         """Lista ficheros de una carpeta. Oculta los sidecar .sha256 y adjunta el hash.
+
+        `query` (opcional): filtra por subcadena en el nombre, insensible a mayúsculas. El
+        filtro se aplica ANTES de paginar, así que la búsqueda y el cursor conviven.
 
         Devuelve `(items, cursor_siguiente)`. Sin `limit` devuelve la carpeta entera y el cursor es
         None, que es lo que necesitan las pantallas de la web.
@@ -2634,10 +2759,13 @@ class Handler(BaseHTTPRequestHandler):
         20.000 ficheros, pedir 500 hace 500 lecturas, no 20.000.
         """
         crudos = []
+        q = (query or "").strip().lower()
         try:
             for name in os.listdir(base_dir):
                 if name.endswith(SHA_EXT):
                     continue                       # no listar los ficheros de comprobación
+                if q and q not in name.lower():
+                    continue                       # búsqueda por nombre (subcadena, sin mayúsc.)
                 p = os.path.join(base_dir, name)
                 try:
                     st = os.stat(p)
@@ -2766,6 +2894,14 @@ class Handler(BaseHTTPRequestHandler):
             self._read_body()
             return self._api_error("bad_request",
                                    f"No se admiten ficheros '{SHA_EXT}': los genera el servidor.", 400)
+        _bloq = extension_bloqueada(nombre)
+        if _bloq:
+            self._read_body()
+            db.log_event("upload_blocked", user=me, origin=self._origin(), ip=self._client_ip(),
+                         detail=f"[api] {nombre} · .{_bloq} bloqueada")
+            return self._api_error("blocked_extension",
+                                   f"La extensión .{_bloq} está bloqueada por seguridad. Pide al "
+                                   "administrador que la permita si es imprescindible.", 415)
 
         try:
             total = int(self.headers.get("Content-Length", 0))
@@ -3012,6 +3148,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, b"No hay datos que finalizar", "text/plain; charset=utf-8")
             return
         rel = safe_relpath(filename)                      # ["carpeta","sub","archivo.rom"]
+        _bloq = extension_bloqueada(rel[-1])
+        if _bloq:
+            self._borra(part)
+            db.log_event("upload_blocked", user=(self._current_user() or (None,))[0],
+                         origin=self._origin(), ip=self._client_ip(),
+                         detail=f"{rel[-1]} · .{_bloq} bloqueada")
+            self._send(415, f"La extensión .{_bloq} está bloqueada por seguridad."
+                       .encode("utf-8"), "text/plain; charset=utf-8")
+            return
         subdir = os.path.join(base, *rel[:-1])
         os.makedirs(subdir, exist_ok=True)
         dest = unique_path(subdir, rel[-1])
@@ -3107,6 +3252,15 @@ def print_banner(url):
         print(f"  Servicio disponible en:  {G}{url}{R}")
     print(f"  {D}Organización: {ORG_NAME}{R}")
     print(f"  {D}Acceso restringido a la red local: {', '.join(LAN_CIDRS)}{R}")
+    try:
+        _bext = blocked_ext_set()
+    except Exception:
+        _bext = BLOCKED_EXT
+    if _bext:
+        print(f"  {D}Extensiones bloqueadas al subir: {len(_bext)} "
+              f"(.{', .'.join(sorted(_bext))}){R}")
+    else:
+        print(f"  {D}Bloqueo de extensiones: DESACTIVADO{R}")
     print(f"  {D}Datos y base de datos en: {DATA_DIR}{R}")
     print(f"  {D}Gestión de usuarios: panel web /admin  ·  CLI: python3 db.py user list{R}")
     print(flush=True)

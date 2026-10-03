@@ -95,6 +95,7 @@ curl -H "Authorization: Bearer $CLAVE" \
 |---|---|
 | `limit` | Tamaño de página. Por defecto 500, máximo 1000. Fuera de rango se ajusta al tope. |
 | `cursor` | El `next` de la respuesta anterior. Un cursor inválido o caducado **no da error**: se empieza por el principio. |
+| `q` | Filtra por nombre: devuelve solo los archivos cuyo nombre **contiene** este texto (insensible a mayúsculas). Compatible con `limit`/`cursor`. |
 
 El orden es **fecha descendente** y, a igualdad de fecha, **nombre ascendente**.
 
@@ -178,6 +179,7 @@ Formato uniforme:
 | 403 | — | Llamada **desde fuera de la red local** (sin acceso remoto concedido) |
 | 404 | `not_found` | Ese archivo no está en esa carpeta |
 | 413 | `too_large` | El archivo supera el máximo por petición |
+| 415 | `blocked_extension` | La extensión del archivo está bloqueada por seguridad — **no se guardó nada** |
 | 422 | `hash_mismatch` | El `X-SHA256` no coincide — **no se guardó nada** |
 | 429 | `rate_limited` | Has superado el límite por minuto |
 

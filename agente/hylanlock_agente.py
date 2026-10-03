@@ -94,6 +94,22 @@ def nombre_seguro(nombre):
     return nombre
 
 
+# Extensiones que el agente NO escribe en el equipo del usuario (misma higiene que el servidor).
+# Defensa en profundidad: aunque un ejecutable llegara a estar en el servidor, el agente no lo
+# deja caer en el PC. Es higiene/accidentes, NO un antivirus (renombrar la extensión lo salta).
+BLOCKED_EXT = frozenset((
+    "exe", "bat", "cmd", "com", "scr", "pif", "msi", "msp", "cpl", "jar", "js", "jse",
+    "vbs", "vbe", "wsf", "wsh", "hta", "ps1", "psm1", "sh", "reg", "lnk", "inf",
+    "dll", "sys", "scf", "msc",
+))
+
+
+def extension_bloqueada(nombre):
+    """La extensión (sin punto) si está bloqueada, o '' si se permite. Mira solo la última."""
+    ext = os.path.splitext(nombre or "")[1].lower().lstrip(".")
+    return ext if ext in BLOCKED_EXT else ""
+
+
 def carpeta_segura(base, relativa):
     """Une base + ruta relativa comprobando que el resultado NO se sale de 'base'."""
     partes = [nombre_seguro(p) for p in (relativa or "").split("/") if p]
@@ -465,6 +481,10 @@ def sincronizar(cfg, simular=False):
             if not nombre:
                 continue
             clave = "/".join(partes + [nombre])
+            _bloq = extension_bloqueada(nombre)
+            if _bloq:
+                log(f"   ⛔ {nombre}: extensión .{_bloq} bloqueada por seguridad; no se descarga.")
+                continue
             ruta_local = os.path.join(destino_carpeta, nombre)
             esperado = f.get("sha256")
             anterior = (previos or {}).get(clave)
