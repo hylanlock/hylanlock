@@ -74,29 +74,29 @@
 <!-- ===== VISTA 1: DASHBOARD ===== -->
 <section id="v-dash">
   <div class="content-head">
-    <div class="logo">🛠️</div>
+    <div class="logo"></div>
     <div>
       <h1>Administración</h1>
       <div class="sub">Resumen de tu organización</div>
     </div>
   </div>
   <div class="kpis">
-    <div class="kpi" onclick="showList('deptos')"><div class="ki">🏢</div><div class="kn" id="c-deptos">–</div><div class="kl">Departamentos</div><div class="kgo">ver →</div></div>
-    <div class="kpi" onclick="showList('miembros')"><div class="ki">👤</div><div class="kn" id="c-miembros">–</div><div class="kl">Miembros</div><div class="kgo">ver →</div></div>
-    <div class="kpi" onclick="showList('jefes')"><div class="ki">👑</div><div class="kn" id="c-jefes">–</div><div class="kl">Jefes</div><div class="kgo">ver →</div></div>
-    <div class="kpi" onclick="showList('admins')"><div class="ki">🛠️</div><div class="kn" id="c-admins">–</div><div class="kl">Administradores</div><div class="kgo">ver →</div></div>
+    <div class="kpi" onclick="showList('deptos')"><div class="ki"></div><div class="kn" id="c-deptos">–</div><div class="kl">Departamentos</div><div class="kgo">ver →</div></div>
+    <div class="kpi" onclick="showList('miembros')"><div class="ki"></div><div class="kn" id="c-miembros">–</div><div class="kl">Miembros</div><div class="kgo">ver →</div></div>
+    <div class="kpi" onclick="showList('jefes')"><div class="ki"></div><div class="kn" id="c-jefes">–</div><div class="kl">Jefes</div><div class="kgo">ver →</div></div>
+    <div class="kpi" onclick="showList('admins')"><div class="ki"></div><div class="kn" id="c-admins">–</div><div class="kl">Administradores</div><div class="kgo">ver →</div></div>
   </div>
   <h2 class="sec">Acciones</h2>
   <div class="actions">
-    <button class="abtn primary" onclick="openNewDept()">➕ Crear departamento</button>
-    <button class="abtn primary" onclick="openNewUser()">➕ Crear usuario</button>
-    <button class="abtn ghost" onclick="showSvc()">🔌 Integraciones (API)</button>
-    <button class="abtn ghost" onclick="openGen(false)">🔑 Generador de contraseñas</button>
-    <a class="abtn ghost" href="/admin/licencia" style="text-decoration:none;display:inline-flex;align-items:center">🪪 Licencia</a>
+    <button class="abtn primary" onclick="openNewDept()">Crear departamento</button>
+    <button class="abtn primary" onclick="openNewUser()">Crear usuario</button>
+    <button class="abtn ghost" onclick="showSvc()">Integraciones (API)</button>
+    <button class="abtn ghost" onclick="openGen(false)">Generador de contraseñas</button>
+    <a class="abtn ghost" href="/admin/licencia" style="text-decoration:none;display:inline-flex;align-items:center">Licencia</a>
   </div>
 
   <div class="panel" style="margin-top:16px">
-    <h2 class="sec">🛡️ Seguridad de subidas — extensiones bloqueadas</h2>
+    <h2 class="sec">Seguridad de subidas — extensiones bloqueadas</h2>
     <p style="font-size:.85rem;color:var(--muted);margin:6px 0 10px">
       Marca los tipos de archivo que quieres <b>rechazar al subir</b>. Es una capa de higiene contra
       ejecutables/scripts que alguien podría abrir por error; renombrar la extensión la salta, así que
@@ -104,7 +104,7 @@
     </p>
     <div id="ext-groups"></div>
     <details style="margin-top:12px">
-      <summary style="cursor:pointer;font-size:.85rem;color:var(--accent)">➕ Otras extensiones (avanzado)</summary>
+      <summary style="cursor:pointer;font-size:.85rem;color:var(--accent)">Otras extensiones (avanzado)</summary>
       <p style="font-size:.82rem;color:var(--muted);margin:8px 0 6px">
         Añade extensiones que no estén en la lista de arriba, separadas por comas (sin el punto).
       </p>
@@ -120,7 +120,7 @@
   </div>
 
   <div id="requests-wrap" style="display:none">
-    <h2 class="sec">🙋 Solicitudes de acceso pendientes</h2>
+    <h2 class="sec">Solicitudes de acceso pendientes</h2>
     <div id="requests" class="flist"></div>
   </div>
 </section>
@@ -129,7 +129,7 @@
 <section id="v-list" class="hidden">
   <a class="crumb" onclick="showDash()">← Panel de administración</a>
   <div class="content-head">
-    <div class="logo" id="list-ic">👤</div>
+    <div class="logo" id="list-ic"></div>
     <div><h1 id="list-title">Miembros</h1><div class="sub" id="list-sub"></div></div>
   </div>
   <section class="panel"><div class="rowlist" id="list-rows"></div></section>
@@ -139,14 +139,14 @@
 <section id="v-subs" class="hidden">
   <a class="crumb" onclick="showList('deptos')">← Departamentos</a>
   <div class="content-head">
-    <div class="logo">📁</div>
+    <div class="logo"></div>
     <div><h1 id="subs-title">Subcarpetas</h1>
       <div class="sub">Carpetas privadas dentro del departamento. No se heredan: el acceso es siempre explícito.</div></div>
   </div>
   <section class="panel">
     <div class="field"><label>Nueva subcarpeta</label>
       <div class="genout"><input type="text" id="ns-name" placeholder="ej: Nóminas de Luis" autocomplete="off">
-        <button class="mini" onclick="addSub()">➕ Crear</button></div>
+        <button class="mini" onclick="addSub()">Crear</button></div>
     </div>
     <div id="subs-msg" class="msg"></div>
     <div class="rowlist" id="subs-rows"></div>
@@ -157,7 +157,7 @@
 <section id="v-svc" class="hidden">
   <a class="crumb" onclick="showDash()">← Panel de administración</a>
   <div class="content-head">
-    <div class="logo">🔌</div>
+    <div class="logo"></div>
     <div><h1>Integraciones</h1>
       <div class="sub">Cuentas de servicio para que otros programas usen la API. No son personas:
         no pueden entrar por la web.</div></div>
@@ -165,15 +165,15 @@
   <section class="panel">
     <div class="field"><label>Nueva integración</label>
       <div class="genout"><input type="text" id="sv-name" placeholder="ej: erp-facturacion" autocomplete="off">
-        <button class="mini" onclick="addSvc()">➕ Crear</button></div>
+        <button class="mini" onclick="addSvc()">Crear</button></div>
       <div class="sub" style="margin-top:6px">Después dale acceso a las carpetas que necesite desde
         «Departamentos» y «Subcarpetas», igual que a un empleado. Mínimo privilegio.</div>
     </div>
     <div id="sv-key" style="display:none;margin-top:12px" class="notice-box">
-      <b>⚠️ Copia la clave ahora: no se volverá a mostrar.</b>
+      <b>Copia la clave ahora: no se volverá a mostrar.</b>
       <div class="genout" style="margin-top:8px">
         <input type="text" id="sv-key-val" readonly>
-        <button class="mini" onclick="copiaClave(this)">📋 Copiar</button>
+        <button class="mini" onclick="copiaClave(this)">Copiar</button>
       </div>
     </div>
     <div id="sv-msg" class="msg"></div>
@@ -185,10 +185,10 @@
 <section id="v-edit" class="hidden">
   <a class="crumb" onclick="backToList()">← Volver a la lista</a>
   <div class="content-head">
-    <div class="logo">✏️</div>
+    <div class="logo"></div>
     <div><h1 id="edit-title">Editar usuario</h1><div class="sub">Cambios protegidos por tu contraseña</div></div>
   </div>
-  <span class="stepup">🔒 Acción protegida · se te pedirá tu contraseña si hace falta</span>
+  <span class="stepup">Acción protegida · se te pedirá tu contraseña si hace falta</span>
   <section class="panel">
     <div class="field">
       <label>Nombre de usuario</label>
@@ -197,9 +197,9 @@
     <div class="field">
       <label>Rol</label>
       <select id="edit-role">
-        <option value="member">👤 Miembro (empresa, solo red local)</option>
-        <option value="head">👑 Jefe / Director (acceso a todos los departamentos)</option>
-        <option value="admin">🛠️ Administrador (local + Internet)</option>
+        <option value="member">Miembro (empresa, solo red local)</option>
+        <option value="head">Jefe / Director (acceso a todos los departamentos)</option>
+        <option value="admin">Administrador (local + Internet)</option>
       </select>
     </div>
     <div class="field">
@@ -209,15 +209,15 @@
     <div class="field">
       <label>Contraseña</label>
       <div class="editrow" style="margin-top:6px">
-        <button class="mini" onclick="sendReset()">🎟️ Enviar enlace de restablecimiento</button>
-        <button class="mini direct-only" onclick="openGen(true)">🔑 Fijar contraseña directa</button>
+        <button class="mini" onclick="sendReset()">Enviar enlace de restablecimiento</button>
+        <button class="mini direct-only" onclick="openGen(true)">Fijar contraseña directa</button>
       </div>
       <span class="sub">Con el enlace, el usuario pone su nueva contraseña (tú no la ves). O fíjala tú directamente.</span>
     </div>
     <div id="edit-msg" class="msg"></div>
     <div class="editrow">
-      <button class="btn-primary" onclick="saveUser()">💾 Guardar cambios</button>
-      <button class="mini danger" onclick="delUser()">🗑️ Borrar usuario</button>
+      <button class="btn-primary" onclick="saveUser()">Guardar cambios</button>
+      <button class="mini danger" onclick="delUser()">Borrar usuario</button>
     </div>
   </section>
 </section>
@@ -225,7 +225,7 @@
 <!-- ===== Modal: crear departamento ===== -->
 <div class="overlay" id="ov-dept">
   <div class="modal">
-    <h3>➕ Crear departamento</h3>
+    <h3>Crear departamento</h3>
     <div class="field"><label>Nombre</label><input type="text" id="nd-name" placeholder="ej: Ventas, Marketing" autocomplete="off"></div>
     <div id="nd-msg" class="msg"></div>
     <div class="editrow" style="justify-content:flex-end">
@@ -238,22 +238,22 @@
 <!-- ===== Modal: crear usuario ===== -->
 <div class="overlay" id="ov-user">
   <div class="modal">
-    <h3>➕ Crear usuario</h3>
+    <h3>Crear usuario</h3>
     <div class="field"><label>Usuario</label><input type="text" id="nu-name" placeholder="ej: juan.perez" autocomplete="off"></div>
     <div class="field"><label>Rol</label>
       <select id="nu-role">
-        <option value="member">👤 Miembro</option>
-        <option value="head">👑 Jefe / Director</option>
-        <option value="admin">🛠️ Administrador</option>
+        <option value="member">Miembro</option>
+        <option value="head">Jefe / Director</option>
+        <option value="admin">Administrador</option>
       </select>
     </div>
     <div class="field"><label>Contraseña</label>
       <div class="chips" style="margin-top:6px">
-        <span class="chip on" id="m-invite" onclick="setMethod('invite')">🎟️ Enviar invitación</span>
-        <span class="chip" id="m-direct" onclick="setMethod('direct')">🔑 Fijar contraseña</span>
+        <span class="chip on" id="m-invite" onclick="setMethod('invite')">Enviar invitación</span>
+        <span class="chip" id="m-direct" onclick="setMethod('direct')">Fijar contraseña</span>
       </div>
       <div class="sub" id="nu-invite-note" style="margin-top:8px">El usuario recibirá un enlace de un solo uso y creará su propia contraseña. Tú nunca la verás.</div>
-      <div class="genout hidden" id="nu-pwbox"><input type="text" id="nu-pw" placeholder="escribe o genera una"><button class="mini" onclick="nuGen()">🔑 Generar</button></div>
+      <div class="genout hidden" id="nu-pwbox"><input type="text" id="nu-pw" placeholder="escribe o genera una"><button class="mini" onclick="nuGen()">Generar</button></div>
     </div>
     <div id="nu-msg" class="msg"></div>
     <div class="editrow" style="justify-content:flex-end">
@@ -266,11 +266,11 @@
 <!-- ===== Modal: enlace de invitación generado ===== -->
 <div class="overlay" id="ov-invite">
   <div class="modal">
-    <h3 id="inv-title">🎟️ Enlace de invitación</h3>
+    <h3 id="inv-title">Enlace de invitación</h3>
     <div class="sub" id="inv-sub" style="margin-top:4px"></div>
     <div style="text-align:center;margin-top:14px" id="inv-qr"></div>
-    <div class="genout"><input type="text" id="inv-url" readonly><button class="mini" onclick="copyInv(this)">📋 Copiar</button></div>
-    <div class="sub" style="margin-top:10px">⚠️ Este enlace solo se muestra ahora. Entrégaselo al usuario (en persona, chat interno o el QR). Caduca y es de un solo uso.</div>
+    <div class="genout"><input type="text" id="inv-url" readonly><button class="mini" onclick="copyInv(this)">Copiar</button></div>
+    <div class="sub" style="margin-top:10px">Este enlace solo se muestra ahora. Entrégaselo al usuario (en persona, chat interno o el QR). Caduca y es de un solo uso.</div>
     <div class="editrow" style="justify-content:flex-end">
       <button class="btn-primary" onclick="closeOv('ov-invite')">Hecho</button>
     </div>
@@ -280,9 +280,9 @@
 <!-- ===== Modal: generador / restablecer ===== -->
 <div class="overlay" id="ov-gen">
   <div class="modal">
-    <h3 id="gen-title">🔑 Generador de contraseñas</h3>
+    <h3 id="gen-title">Generador de contraseñas</h3>
     <div class="sub" id="gen-sub" style="margin-top:4px"></div>
-    <div class="genout"><input type="text" id="gen-out" readonly><button class="mini" onclick="copyGen(this)">📋 Copiar</button></div>
+    <div class="genout"><input type="text" id="gen-out" readonly><button class="mini" onclick="copyGen(this)">Copiar</button></div>
     <div class="genopts">
       <div class="line">Longitud: <b id="gen-len-l">16</b><input type="range" id="gen-len" min="8" max="40" value="16" oninput="genLenLbl();gen()"></div>
       <label class="line"><input type="checkbox" id="gen-up" checked onchange="gen()"> Mayúsculas (A-Z)</label>
@@ -292,8 +292,8 @@
     <div id="gen-msg" class="msg"></div>
     <div class="editrow" style="justify-content:flex-end">
       <button class="btn-ghost" onclick="closeOv('ov-gen')">Cerrar</button>
-      <button class="btn-ghost" onclick="gen()">🔄 Otra</button>
-      <button class="btn-primary hidden" id="gen-save" onclick="saveReset()">💾 Guardar contraseña</button>
+      <button class="btn-ghost" onclick="gen()">Otra</button>
+      <button class="btn-primary hidden" id="gen-save" onclick="saveReset()">Guardar contraseña</button>
     </div>
   </div>
 </div>
@@ -372,11 +372,11 @@
       setExtFromConfig();
       msg.style.color = 'var(--ok)';
       msg.textContent = CFG.blocked_ext.length
-        ? ('✅ Guardado · ' + CFG.blocked_ext.length + ' extensiones bloqueadas')
-        : '✅ Guardado · bloqueo DESACTIVADO';
+        ? ('Guardado · ' + CFG.blocked_ext.length + ' extensiones bloqueadas')
+        : 'Guardado · bloqueo DESACTIVADO';
     } else {
       msg.style.color = 'var(--err)';
-      msg.textContent = '❌ ' + (r.error || 'No se pudo guardar');
+      msg.textContent = '' + (r.error || 'No se pudo guardar');
     }
   }
   async function loadRequests() {
@@ -386,11 +386,11 @@
     const box = document.getElementById('requests');
     if (!reqs.length) { wrap.style.display = 'none'; return; }
     wrap.style.display = 'block';
-    box.innerHTML = reqs.map(r => `<div class="row"><span class="ic">🙋</span>
+    box.innerHTML = reqs.map(r => `<div class="row"><span class="ic"></span>
       <div class="main"><div class="t">${esc(r.username)}</div>
         <div class="d">pide acceso a <b>${esc(r.dept_name)}</b></div></div>
-      <button class="mini" onclick="resolveReq(${r.id}, true, this)">✅ Aprobar</button>
-      <button class="mini" onclick="resolveReq(${r.id}, false, this)">🚫 Rechazar</button></div>`).join('');
+      <button class="mini" onclick="resolveReq(${r.id}, true, this)">Aprobar</button>
+      <button class="mini" onclick="resolveReq(${r.id}, false, this)">Rechazar</button></div>`).join('');
   }
   async function resolveReq(id, approve, btn) {
     btn.disabled = true;
@@ -431,10 +431,10 @@
   function showDash() { view('v-dash'); renderCounts(); }
 
   const LIST_META = {
-    deptos: { ic: '🏢', title: 'Departamentos', sub: 'Toca un departamento para gestionarlo' },
-    miembros: { ic: '👤', title: 'Miembros', sub: 'Toca un usuario para editarlo' },
-    jefes: { ic: '👑', title: 'Jefes / Directores', sub: 'Acceso a todos los departamentos' },
-    admins: { ic: '🛠️', title: 'Administradores', sub: 'Local + Internet' },
+    deptos: { ic: '', title: 'Departamentos', sub: 'Toca un departamento para gestionarlo' },
+    miembros: { ic: '', title: 'Miembros', sub: 'Toca un usuario para editarlo' },
+    jefes: { ic: '', title: 'Jefes / Directores', sub: 'Acceso a todos los departamentos' },
+    admins: { ic: '', title: 'Administradores', sub: 'Local + Internet' },
   };
   function showList(kind) {
     CURRENT = kind; const m = LIST_META[kind];
@@ -446,21 +446,21 @@
       box.innerHTML = DEPTS.length ? DEPTS.map(d => {
         const head = d.members.find(m => m.role === 'head');
         const info = `${d.members.length} miembro(s)` + (head ? ` · jefe: ${esc(head.username)}` : '');
-        return `<div class="row"><span class="ic">🏢</span><div class="main"><div class="t">${esc(d.name)} <span class="tag2">/${esc(d.slug)}</span></div><div class="d">${info}</div></div>
-          <button class="mini" onclick="showList('miembros')">👥 Gestionar miembros</button>
-          <button class="mini" onclick="showSubs('${esc(d.slug)}','${esc(d.name)}')">📁 Subcarpetas</button>
-          <button class="mini danger" onclick="delDept('${esc(d.slug)}','${esc(d.name)}')">🗑️</button></div>`;
+        return `<div class="row"><span class="ic"></span><div class="main"><div class="t">${esc(d.name)} <span class="tag2">/${esc(d.slug)}</span></div><div class="d">${info}</div></div>
+          <button class="mini" onclick="showList('miembros')">Gestionar miembros</button>
+          <button class="mini" onclick="showSubs('${esc(d.slug)}','${esc(d.name)}')">Subcarpetas</button>
+          <button class="mini danger" onclick="delDept('${esc(d.slug)}','${esc(d.name)}')"></button></div>`;
       }).join('') : '<div class="empty">Aún no hay departamentos. Créalo desde el panel.</div>';
     } else {
       const list = groups()[kind];
       box.innerHTML = list.length ? list.map(u => {
-        const tag = u.boss ? '<span class="tag2 tag-boss">👑 Jefe</span>' : '';
-        const pend = u.status === 'pending' ? '<span class="tag2 tag-boss">⏳ Pendiente</span>' : '';
+        const tag = u.boss ? '<span class="tag2 tag-boss">Jefe</span>' : '';
+        const pend = u.status === 'pending' ? '<span class="tag2 tag-boss">Pendiente</span>' : '';
         const deps = userDeps(u.username).map(x => x.name).join(', ') || (u.scope === 'admin' ? 'Todos' : 'sin departamento');
-        const resend = u.status === 'pending' ? `<button class="mini" onclick="resendInvite('${esc(u.username)}')">🎟️ Reenviar</button>` : '';
-        return `<div class="row"><span class="ic">${u.scope === 'admin' ? '🛠️' : '👤'}</span>
+        const resend = u.status === 'pending' ? `<button class="mini" onclick="resendInvite('${esc(u.username)}')">Reenviar</button>` : '';
+        return `<div class="row"><span class="ic">${u.scope === 'admin' ? '' : ''}</span>
           <div class="main"><div class="t">${esc(u.username)} ${tag}${pend}</div><div class="d">${esc(deps)}</div></div>
-          ${resend}<button class="mini" onclick="editUser('${esc(u.username)}')">✏️ Editar</button></div>`;
+          ${resend}<button class="mini" onclick="editUser('${esc(u.username)}')">Editar</button></div>`;
       }).join('') : '<div class="empty">No hay usuarios en esta categoría.</div>';
     }
     view('v-list');
@@ -488,20 +488,20 @@
                         ...s.subfolders.map(f => f.dept_name + ' / ' + f.name)];
       const acc = carpetas.length ? carpetas.map(esc).join(' · ')
         : '<b>sin acceso a ninguna carpeta</b> — dáselo desde Departamentos o Subcarpetas';
-      const claves = s.keys.length ? s.keys.map(k => `<div class="frow"><span class="fic">🔑</span>
+      const claves = s.keys.length ? s.keys.map(k => `<div class="frow"><span class="fic"></span>
         <span class="fn">${esc(k.name)}<div class="fh">alta: ${esc(k.created_at)} ·
           ${k.last_used_at ? 'último uso: ' + esc(k.last_used_at) : 'sin usar todavía'}</div></span>
-        <button class="mini danger" onclick="revocaClave('${esc(s.username)}',${k.id})">✖ Revocar</button></div>`).join('')
+        <button class="mini danger" onclick="revocaClave('${esc(s.username)}',${k.id})">Revocar</button></div>`).join('')
         : '<div class="empty">Sin claves activas.</div>';
       return `<div class="row" style="display:block">
         <div style="display:flex;align-items:center;gap:10px">
-          <span class="ic">🔌</span>
+          <span class="ic"></span>
           <div class="main"><div class="t">${esc(s.username)}
-            ${s.remote ? '<span class="tag2 tag-boss">🌍 acceso remoto</span>' : '<span class="tag2">🔒 solo LAN</span>'}</div>
+            ${s.remote ? '<span class="tag2 tag-boss">acceso remoto</span>' : '<span class="tag2">solo LAN</span>'}</div>
             <div class="d">${acc}</div></div>
-          <button class="mini" onclick="nuevaClave('${esc(s.username)}')">🔑 Nueva clave</button>
-          <button class="mini" onclick="toggleRemoto('${esc(s.username)}',${s.remote ? 0 : 1})">${s.remote ? '🔒 Solo LAN' : '🌍 Permitir remoto'}</button>
-          <button class="mini danger" onclick="borraSvc('${esc(s.username)}')">🗑️</button>
+          <button class="mini" onclick="nuevaClave('${esc(s.username)}')">Nueva clave</button>
+          <button class="mini" onclick="toggleRemoto('${esc(s.username)}',${s.remote ? 0 : 1})">${s.remote ? 'Solo LAN' : 'Permitir remoto'}</button>
+          <button class="mini danger" onclick="borraSvc('${esc(s.username)}')"></button>
         </div>
         <div style="margin-top:10px;padding-left:6px">${claves}</div></div>`;
     }).join('');
@@ -550,9 +550,9 @@
   // ---- Subcarpetas (ACL por usuario, un rol por carpeta) ----
   let SUB_DEP = '', SUB_DEPNAME = '', SUBS = [];
   const SUB_ROLES = [
-    ['folder_owner', '👤 Dueño (ver, subir, descargar)'],
-    ['depositor', '📥 Solo dejar (buzón de entrega)'],
-    ['reader', '👁️ Solo lectura'],
+    ['folder_owner', 'Dueño (ver, subir, descargar)'],
+    ['depositor', 'Solo dejar (buzón de entrega)'],
+    ['reader', 'Solo lectura'],
   ];
   async function showSubs(slug, name) {
     SUB_DEP = slug; SUB_DEPNAME = name;
@@ -572,13 +572,13 @@
     // Aquí SÍ salen las cuentas de servicio: darles acceso a una carpeta es justo el mecanismo
     // por el que una integración obtiene permisos. Se marcan para no confundirlas con personas.
     const cands = USERS.filter(u => u.scope !== 'admin')
-      .map(u => ({ u: u.username, lbl: u.username + (u.scope === 'service' ? '  🔌 (integración)' : '') }));
+      .map(u => ({ u: u.username, lbl: u.username + (u.scope === 'service' ? '  (integración)' : '') }));
     box.innerHTML = SUBS.map(sf => {
       const acl = sf.acl.map(a => {
         const lbl = (SUB_ROLES.find(r => r[0] === a.role) || ['', a.role])[1];
-        return `<div class="row"><span class="ic">${a.role === 'depositor' ? '📥' : (a.role === 'reader' ? '👁️' : '👤')}</span>
+        return `<div class="row"><span class="ic">${a.role === 'depositor' ? '' : (a.role === 'reader' ? '' : '')}</span>
           <div class="main"><div class="t">${esc(a.username)}</div><div class="d">${esc(lbl)}</div></div>
-          <button class="mini danger" onclick="setSubAccess('${esc(sf.slug)}','${esc(a.username)}','')">✖ Quitar</button></div>`;
+          <button class="mini danger" onclick="setSubAccess('${esc(sf.slug)}','${esc(a.username)}','')">Quitar</button></div>`;
       }).join('') || '<div class="empty">Nadie tiene acceso todavía. Solo jefes, dirección y administradores.</div>';
       const libres = cands.filter(c => !sf.acl.some(a => a.username === c.u));
       const opts = libres.map(c => `<option value="${esc(c.u)}">${esc(c.lbl)}</option>`).join('');
@@ -586,14 +586,14 @@
       const add = libres.length ? `<div class="genout" style="margin-top:8px">
           <select id="sa-u-${esc(sf.slug)}">${opts}</select>
           <select id="sa-r-${esc(sf.slug)}">${roles}</select>
-          <button class="mini" onclick="addSubAccess('${esc(sf.slug)}')">➕ Dar acceso</button></div>`
+          <button class="mini" onclick="addSubAccess('${esc(sf.slug)}')">Dar acceso</button></div>`
         : '<div class="sub" style="margin-top:8px">Todos los usuarios ya tienen acceso.</div>';
       return `<div class="row" style="display:block">
         <div style="display:flex;align-items:center;gap:10px">
-          <span class="ic">📁</span>
+          <span class="ic"></span>
           <div class="main"><div class="t">${esc(sf.name)} <span class="tag2">/${esc(sf.slug)}</span></div>
             <div class="d">${sf.acl.length} con acceso explícito</div></div>
-          <button class="mini danger" onclick="delSub('${esc(sf.slug)}','${esc(sf.name)}')">🗑️</button>
+          <button class="mini danger" onclick="delSub('${esc(sf.slug)}','${esc(sf.name)}')"></button>
         </div>
         <div style="margin-top:10px;padding-left:6px">${acl}${add}</div></div>`;
     }).join('');
@@ -637,7 +637,7 @@
     const mine = userDeps(username).map(d => d.slug);
     document.getElementById('edit-deps').innerHTML = DEPTS.length ? DEPTS.map(d => {
       const on = mine.includes(d.slug);
-      return `<span class="chip ${on ? 'on' : ''}" onclick="toggleDep('${esc(d.slug)}', this)">🏢 ${esc(d.name)} ${on ? '✓' : ''}</span>`;
+      return `<span class="chip ${on ? 'on' : ''}" onclick="toggleDep('${esc(d.slug)}', this)">${esc(d.name)} ${on ? '' : ''}</span>`;
     }).join('') : '<span class="sub">No hay departamentos.</span>';
     view('v-edit');
   }
@@ -665,7 +665,7 @@
       EDIT = (r.json && r.json.username) || newName; changed = true;
     }
     await loadData();
-    if (changed) { msg('edit-msg', '✅ Cambios guardados', true); editUser(EDIT); }
+    if (changed) { msg('edit-msg', 'Cambios guardados', true); editUser(EDIT); }
     else msg('edit-msg', 'No había cambios que guardar', true);
   }
   async function delUser() {
@@ -726,7 +726,7 @@
 
   // ---- Enlace de invitación ----
   function showInvite(inv, isReset) {
-    document.getElementById('inv-title').textContent = isReset ? '🎟️ Enlace de restablecimiento' : '🎟️ Invitación creada';
+    document.getElementById('inv-title').textContent = isReset ? 'Enlace de restablecimiento' : 'Invitación creada';
     document.getElementById('inv-sub').textContent = (isReset ? 'Para ' : 'Cuenta ') + (inv.username || '') +
       ' · caduca en ' + (inv.hours || 48) + ' h';
     document.getElementById('inv-qr').innerHTML = inv.qr || '';
@@ -763,7 +763,7 @@
   let GEN_RESET = false;
   function openGen(reset) {
     GEN_RESET = reset;
-    document.getElementById('gen-title').textContent = reset ? '🔑 Restablecer contraseña de ' + EDIT : '🔑 Generador de contraseñas';
+    document.getElementById('gen-title').textContent = reset ? 'Restablecer contraseña de ' + EDIT : 'Generador de contraseñas';
     document.getElementById('gen-sub').textContent = reset
       ? 'Se guardará hasheada. Cópiala ahora: no se podrá volver a ver.'
       : 'Genera una contraseña fuerte para entregar al usuario.';
@@ -776,7 +776,7 @@
     const pw = document.getElementById('gen-out').value;
     const r = await post('/admin/user/password', { username: EDIT, password: pw });
     if (r.stepup) return; if (!r.ok) return msg('gen-msg', r.error || 'Error', false);
-    msg('gen-msg', '✅ Contraseña restablecida. Recuerda entregarla ahora.', true);
+    msg('gen-msg', 'Contraseña restablecida. Recuerda entregarla ahora.', true);
     document.getElementById('gen-save').classList.add('hidden');
   }
   document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); }));

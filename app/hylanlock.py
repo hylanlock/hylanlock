@@ -58,7 +58,11 @@ FEEDBACK_URL = _env("FEEDBACK_URL", "https://hylanlock.vercel.app/feedback")
 ORG_NAME = _env("ORG_NAME", "Hylanlock")     # nombre de la organización (etiqueta en la UI)
 # ── Marca blanca (branding por instalación) ─────────────────────────────────────────
 BRAND_NAME = _env("BRAND_NAME", "Hylanlock")  # nombre visible del producto en la interfaz
-BRAND_LOGO = _env("BRAND_LOGO", "🔒")          # emoji/logo del sidebar y pantallas de entrada
+BRAND_LOGO = _env("BRAND_LOGO", "")          # logo del sidebar: vacío = candado SVG por defecto (serio)
+# Logo por defecto: un candado SVG monocromo (hereda el color del recuadro). Sin emojis.
+BRAND_LOGO_SVG = ('<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" '
+                  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+                  '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>')
 ACCENT = _env("ACCENT", "").strip()            # color de acento (#rrggbb); vacío = el de fábrica
 
 # Provisioning del admin (despliegue automático / Docker). Si NO hay usuarios y se define
@@ -182,8 +186,8 @@ TG_TOKEN = _env("TG_TOKEN", "")
 TG_CHAT = _env("TG_CHAT", "")
 # ==========================================================================
 
-PART_DIR = os.path.join(DATA_DIR, ".incompletos")     # ⏳ trozos de subidas a medias (reanudación)
-DEPTS_DIR = os.path.join(DATA_DIR, "departamentos")  # 🏢 base de carpetas de departamento (SOLO LAN)
+PART_DIR = os.path.join(DATA_DIR, ".incompletos")     # trozos de subidas a medias (reanudación)
+DEPTS_DIR = os.path.join(DATA_DIR, "departamentos")  # base de carpetas de departamento (SOLO LAN)
 
 
 def dep_dir(slug):
@@ -317,7 +321,7 @@ def notify_telegram(text):
 
 
 def _origin_label(origin):
-    return "🏢 red local" if origin == "local" else "🌍 remoto"
+    return "red local" if origin == "local" else "remoto"
 
 
 def enable_ansi_colors():
@@ -645,7 +649,7 @@ def openapi_spec():
                         "Atajo masivo que usa el agente de sincronización. Cada carpeta trae como "
                         "mucho unos cientos de archivos; a la que le falten viene marcada con "
                         "`truncated` y un `next` con el que **completarla** por `/api/v1/files`."
-                        "\n\n⚠️ **Si sincronizas borrados, esto es crítico**: tratar una "
+                        "\n\n**Si sincronizas borrados, esto es crítico**: tratar una "
                         "respuesta recortada como si fuera completa lleva a concluir que los "
                         "archivos que faltan han desaparecido del servidor."),
                     "responses": dict(**{"200": respuesta("Manifiesto", {
@@ -950,7 +954,7 @@ def _inject_theme(text):
     el nombre/logo de marca (__BRAND__/__LOGO__) en TODAS las páginas que pasan por aquí."""
     text = text.replace("<head>", "<head>" + _THEME_HEAD + _ACCENT_STYLE + _PWA_HEAD, 1)
     text = text.replace("</body>", _THEME_TOGGLE + _PWA_SW + "</body>", 1)
-    text = text.replace("__BRAND__", html.escape(BRAND_NAME)).replace("__LOGO__", html.escape(BRAND_LOGO))
+    text = text.replace("__BRAND__", html.escape(BRAND_NAME)).replace("__LOGO__", html.escape(BRAND_LOGO) if BRAND_LOGO else BRAND_LOGO_SVG)
     if BRAND_NAME != "Hylanlock":
         # Rebrand del nombre en textos que aún digan "Hylanlock" (seguro: las clases/ids usan "hyl-").
         text = text.replace("Hylanlock", html.escape(BRAND_NAME))
@@ -1058,15 +1062,15 @@ def render_license(state, err="", ok=""):
                 .replace("__OK__", ok)).encode("utf-8")
 
 
-_EV_ICONS = {"login_ok": "🔓", "login_fail": "⛔", "logout": "🚪", "logout_all": "🔴",
-             "upload": "📥", "upload_dep": "📥", "upload_sub": "📁", "download": "📤", "sync_pull": "🔄",
-             "brute_block": "🛡️", "stepup_ok": "🔐", "stepup_fail": "🚫",
-             "user_create": "🆕", "user_delete": "🗑️", "user_rename": "✏️",
-             "user_pwreset": "🔑", "user_role": "🎚️", "dep_create": "🏢", "dep_delete": "🗑️",
-             "invite_create": "🎟️", "account_activated": "✅",
-             "license_install": "🪪", "data_export": "📦",
-             "access_request": "🙋", "access_approved": "✅", "access_rejected": "🚫",
-             "setup_done": "🚀", "login_ldap": "🔗", "news_seen": "👀"}
+_EV_ICONS = {"login_ok": "", "login_fail": "", "logout": "", "logout_all": "",
+             "upload": "", "upload_dep": "", "upload_sub": "", "download": "", "sync_pull": "",
+             "brute_block": "", "stepup_ok": "", "stepup_fail": "",
+             "user_create": "", "user_delete": "", "user_rename": "",
+             "user_pwreset": "", "user_role": "", "dep_create": "", "dep_delete": "",
+             "invite_create": "", "account_activated": "",
+             "license_install": "", "data_export": "",
+             "access_request": "", "access_approved": "", "access_rejected": "",
+             "setup_done": "", "login_ldap": "", "news_seen": ""}
 
 
 LOG_LIMITES = (100, 200, 500, 1000)
@@ -1151,7 +1155,7 @@ def log_markers(query=None):
   <div class="acciones">
     <button type="submit" class="btn">Filtrar</button>
     <a class="btn2" href="/log">Limpiar</a>
-    <a class="btn2" href="{html.escape(_log_export_href(desde, hasta, tipo, usuario, texto))}">⬇️ Exportar CSV</a>
+    <a class="btn2" href="{html.escape(_log_export_href(desde, hasta, tipo, usuario, texto))}">Exportar CSV</a>
   </div>
 </form>'''
     return summary, body, formulario
@@ -1484,7 +1488,7 @@ class Handler(BaseHTTPRequestHandler):
     def _solo_bearer(self):
         """True si la petición se autentica ÚNICAMENTE con un token de dispositivo.
 
-        ⚠️ Esta es LA comprobación delicada de la API de escritura. El CSRF existe para proteger
+        Esta es LA comprobación delicada de la API de escritura. El CSRF existe para proteger
         credenciales AMBIENTALES (la cookie, que el navegador envía sola). Un token no es
         ambiental: se pone a mano, así que un sitio malicioso no puede provocarlo. Por eso se puede
         eximir del CSRF a una petición con token.
@@ -1558,7 +1562,7 @@ class Handler(BaseHTTPRequestHandler):
         # muestra un enlace; el admin rellena en su navegador (no se rompe "nada sale de tu red").
         pedir_feedback = st["status"] == license.EXPIRED and bool(FEEDBACK_URL)
         fb_btn = (f'<a class="btn2" href="{html.escape(FEEDBACK_URL)}" target="_blank" rel="noopener">'
-                  '💬 Contar mi experiencia</a>') if pedir_feedback else ""
+                  'Contar mi experiencia</a>') if pedir_feedback else ""
         fb_msg = (" <br><br>¿Has probado Hylanlock estos días? <b>Tu opinión honesta —lo bueno y lo "
                   "malo— me ayuda muchísimo a mejorarlo.</b> Son 2 minutos.") if pedir_feedback else ""
         if self._is_admin():
@@ -1568,15 +1572,15 @@ class Handler(BaseHTTPRequestHandler):
                 "licencia para reactivarlo; puedes exportar tus datos en cualquier momento." + fb_msg,
                 detail,
                 fb_btn +
-                '<a class="btn2" href="/admin/licencia">🪪 Ver / renovar licencia</a>'
-                '<a class="btn2" href="/admin/export">📦 Exportar datos</a>'
-                '<a class="btn2" href="/logout">🚪 Cerrar sesión</a>')
+                '<a class="btn2" href="/admin/licencia">Ver / renovar licencia</a>'
+                '<a class="btn2" href="/admin/export">Exportar datos</a>'
+                '<a class="btn2" href="/logout">Cerrar sesión</a>')
         return render_blocked(
             "Servicio no disponible",
             "La licencia de Hylanlock ha caducado o no está activa. "
             "Contacta con el administrador de tu empresa.",
             detail,
-            '<a class="btn2" href="/logout">🚪 Cerrar sesión</a>')
+            '<a class="btn2" href="/logout">Cerrar sesión</a>')
 
     def _username(self):
         u = self._current_user()
@@ -1696,7 +1700,11 @@ class Handler(BaseHTTPRequestHandler):
         if sub:
             sf = next((x for x in db.list_subfolders(dep) if x["slug"] == sub), None)
             title = sf["name"] if sf else sub
-            icon, kind = "📁", "Subcarpeta de " + html.escape(depname)
+            icon, kind = ('<svg viewBox="0 0 24 24" width="24" height="24" fill="none" '
+                          'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+                          'stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 '
+                          '2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>'), \
+                "Subcarpeta de " + html.escape(depname)
             apibase, dlbase = f"/api/dep/{dep}/sub/{sub}", f"/dep/{dep}/sub/{sub}"
             upqs = f"zone=sub&dep={dep}&sub={sub}"
             # Volver al departamento solo si puede verlo: un depositario puede tener acceso a la
@@ -1707,7 +1715,11 @@ class Handler(BaseHTTPRequestHandler):
                 back, backtxt = "/departamentos", "← Mis carpetas"
         else:
             title = depname
-            icon, kind = "🏢", "Departamento · espacio compartido local"
+            icon, kind = ('<svg viewBox="0 0 24 24" width="24" height="24" fill="none" '
+                          'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+                          'stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/>'
+                          '<path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/></svg>'), \
+                "Departamento · espacio compartido local"
             apibase, dlbase = f"/api/dep/{dep}", f"/dep/{dep}"
             upqs = f"zone=dep&dep={dep}"
             back, backtxt = "/departamentos", "← Departamentos"
@@ -1718,17 +1730,17 @@ class Handler(BaseHTTPRequestHandler):
             db.mark_folder_seen(self._username() or "", f"{dep}/{sub}" if sub else dep)
 
         if can_up and not can_ls:
-            aviso = ('<div class="notice-box">📥 <b>Buzón de entrega.</b> Puedes dejar '
+            aviso = ('<div class="notice-box"><b>Buzón de entrega.</b> Puedes dejar '
                      'archivos aquí, pero no ver los que ya hay. Es intencionado: el '
                      'contenido es privado de quien recibe.</div>')
         elif can_ls and not can_up:
-            aviso = ('<div class="notice-box">👁️ <b>Solo lectura.</b> Puedes ver y '
+            aviso = ('<div class="notice-box"><b>Solo lectura.</b> Puedes ver y '
                      'descargar los archivos, pero no subir.</div>')
         else:
             aviso = ""
         if sub:
             # Honestidad (decisión de Nicolás): nunca prometer una privacidad que no existe.
-            aviso += ('<div class="notice-box">👥 <b>Quién más puede ver esta carpeta:</b> '
+            aviso += ('<div class="notice-box"><b>Quién más puede ver esta carpeta:</b> '
                       'el jefe del departamento, la dirección y el administrador del sistema. '
                       'Es privada frente al resto de compañeros, no frente a la empresa.</div>')
 
@@ -1768,14 +1780,14 @@ class Handler(BaseHTTPRequestHandler):
             total_nuevas = sum(nuevas.values())
         except Exception:
             total_nuevas = 0
-        parts = [link("/", "🏠", "Inicio", total_nuevas),
-                 link("/departamentos", "🏢", "Departamentos", total_nuevas),
-                 link("/perfil", "👤", "Mi perfil")]
+        parts = [link("/", "", "Inicio", total_nuevas),
+                 link("/departamentos", "", "Departamentos", total_nuevas),
+                 link("/perfil", "", "Mi perfil")]
         admin = []
         if self._is_admin():                       # users.manage (it_admin)
-            admin.append(link("/admin", "🛠️", "Administración"))
+            admin.append(link("/admin", "", "Administración"))
         if self._has("audit.view"):
-            admin.append(link("/log", "📊", "Registro"))
+            admin.append(link("/log", "", "Registro"))
         if admin:
             parts.append('<div class="nav-lbl">Administración</div>')
             parts.extend(admin)
@@ -1795,7 +1807,7 @@ class Handler(BaseHTTPRequestHandler):
         return ('<div style="margin:0 0 16px;padding:10px 14px;border-radius:12px;font-size:.88rem;'
                 'background:color-mix(in srgb, var(--warn) 14%, transparent);'
                 'border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);color:var(--warn)">'
-                f'⚠️ Tu licencia caduca {cuando}.{accion}</div>')
+                f'Tu licencia caduca {cuando}.{accion}</div>')
 
     def _shell(self, content_page, active, title, **markers):
         """Envuelve el fragmento 'content_page' con el shell (sidebar + contenido). El fragmento
@@ -1803,7 +1815,7 @@ class Handler(BaseHTTPRequestHandler):
         user = self._username() or ""
         admin = self._is_admin()
         role = "Administrador · acceso total" if admin else "Miembro · red local"
-        avatar = "🛠️" if admin else "👤"
+        avatar = "" if admin else ""
         frag = self._license_banner() + _template(content_page)
         for k, v in markers.items():
             frag = frag.replace(k, v)
@@ -1811,7 +1823,7 @@ class Handler(BaseHTTPRequestHandler):
                .replace("__CSS__", _template(CSS))
                .replace("__TITLE__", html.escape(title))
                .replace("__BRAND__", html.escape(BRAND_NAME))
-               .replace("__LOGO__", html.escape(BRAND_LOGO))
+               .replace("__LOGO__", html.escape(BRAND_LOGO) if BRAND_LOGO else BRAND_LOGO_SVG)
                .replace("__ORG__", html.escape(ORG_NAME))
                .replace("__NAV__", self._nav_items(active))
                .replace("__USER__", html.escape(user))
@@ -2302,7 +2314,7 @@ class Handler(BaseHTTPRequestHandler):
                         db.log_event("login_fail", user=username, origin=self._origin(), ip=ip,
                                      detail="nombre en conflicto: ya existe una cuenta local")
                         notify_telegram(
-                            f"⚠️ SEGURIDAD: el directorio autenticó a «{username}», pero ese "
+                            f"SEGURIDAD: el directorio autenticó a «{username}», pero ese "
                             f"nombre ya es de una cuenta LOCAL. Acceso denegado.\n"
                             f"Hora: {time.strftime('%H:%M')}")
                     else:
@@ -2326,7 +2338,7 @@ class Handler(BaseHTTPRequestHandler):
                 # Todos aterrizan en la home de bienvenida (guía rápida). Desde ahí, a departamentos.
                 self._send(302, extra=[("Location", "/"), ("Set-Cookie", cookie)])
                 if self._origin() == "remoto":
-                    notify_telegram(f"🔓 Acceso remoto desde Internet\n"
+                    notify_telegram(f"Acceso remoto desde Internet\n"
                                     f"Usuario: {username}\nHora: {time.strftime('%H:%M')}")
             else:
                 n = record_login_fail(ip)
@@ -2334,11 +2346,11 @@ class Handler(BaseHTTPRequestHandler):
                              origin=self._origin(), ip=ip,
                              detail=deny or f"intento {n}")
                 if deny:
-                    notify_telegram(f"⚠️ SEGURIDAD: intento de acceso desde fuera de la red local\n"
+                    notify_telegram(f"SEGURIDAD: intento de acceso desde fuera de la red local\n"
                                     f"Usuario: {username}\nHora: {time.strftime('%H:%M')}")
                 if n >= LOGIN_MAX_FAILS:
                     db.log_event("brute_block", origin=self._origin(), ip=ip)
-                    notify_telegram(f"⚠️ SEGURIDAD: bloqueo por fuerza bruta\n"
+                    notify_telegram(f"SEGURIDAD: bloqueo por fuerza bruta\n"
                                     f"IP: {ip}\nHora: {time.strftime('%H:%M')}")
                 time.sleep(min(n, 5) * 0.4)   # retardo progresivo (cap 2s)
                 msg = ("Esta cuenta solo puede entrar desde la red local de la empresa"
@@ -2568,7 +2580,7 @@ class Handler(BaseHTTPRequestHandler):
                                  ip=self._client_ip(),
                                  detail=f"{state.get('customer')} · {state.get('type')} · {state.get('expires')}")
                     self._send(200, render_license(state,
-                        ok='<div class="ok-msg">✅ Licencia instalada correctamente.</div>'))
+                        ok='<div class="ok-msg">Licencia instalada correctamente.</div>'))
                 except OSError:
                     self._send(200, render_license(self._license(),
                         err='<div class="err-msg">No se pudo guardar la licencia en el servidor.</div>'))
@@ -2963,7 +2975,7 @@ class Handler(BaseHTTPRequestHandler):
                      ip=self._client_ip(),
                      detail=(db.folder_tag(dep, sub) + os.path.basename(dest)
                              + f" · sha256:{digest[:12]}… · vía API"), bytes=leidos)
-        notify_telegram(f"📥 Subida vía API\nIntegración: {me}\n"
+        notify_telegram(f"Subida vía API\nIntegración: {me}\n"
                         f"Archivo: {os.path.basename(dest)}\nPeso: {human_size(leidos)}\n"
                         f"Carpeta: {lugar}\nHora: {time.strftime('%H:%M')}")
         self._send(201, json.dumps({"name": os.path.basename(dest), "folder": lugar,
@@ -3045,7 +3057,7 @@ class Handler(BaseHTTPRequestHandler):
                          ip=self._client_ip(),
                          detail=(f"[{lugar}] {name}" if lugar else name), bytes=filesize)
             notify_telegram(
-                f"📤 Descarga ({_origin_label(self._origin())})\n"
+                f"Descarga ({_origin_label(self._origin())})\n"
                 f"Usuario: {who or '—'}\n"
                 f"Archivo: {name}\n"
                 f"Peso: {human_size(filesize)}\n"
@@ -3200,13 +3212,13 @@ class Handler(BaseHTTPRequestHandler):
                      detail=(marca + os.path.basename(dest)
                              + f" · sha256:{digest[:12]}…"), bytes=size)
         notify_telegram(
-            f"📥 Subida ({_origin_label(self._origin())})\n"
+            f"Subida ({_origin_label(self._origin())})\n"
             f"Usuario: {who or '—'}\n"
             f"Archivo: {os.path.basename(dest)}\n"
             f"Peso: {human_size(size)}\n"
             f"Zona: {lugar}\n"
             f"Hora: {time.strftime('%H:%M')}")
-        print(f"  \033[32m✅ Guardado\033[0m   {os.path.basename(dest)}  "
+        print(f"  \033[32mGuardado\033[0m   {os.path.basename(dest)}  "
               f"({human_size(size)})", flush=True)
 
         self._send(200, json.dumps({"name": os.path.basename(dest), "sha256": digest}).encode("utf-8"),
@@ -3219,7 +3231,7 @@ def _ancho_columnas(texto):
     import unicodedata
     n = 0
     for ch in texto:
-        # Los caracteres invisibles (selectores de variación como el de 🛡️, uniones de emoji,
+        # Los caracteres invisibles (selectores de variación como el de , uniones de emoji,
         # tildes combinantes) no ocupan sitio: si se cuentan, el marco sale ancho de más.
         if unicodedata.category(ch) in ("Mn", "Me", "Cf"):
             continue
@@ -3313,13 +3325,13 @@ def main():
                 license.EXPIRED: "LICENCIA CADUCADA — servicio bloqueado (los datos se conservan)",
                 license.INVALID: "licencia NO VÁLIDA — servicio bloqueado",
                 license.MISSING: "SIN licencia — servicio bloqueado (instala una en /admin/licencia)"}
-    print(f"  🪪 Licencia: {_lic_msg.get(_lic['status'], _lic['status'])}", flush=True)
+    print(f"  Licencia: {_lic_msg.get(_lic['status'], _lic['status'])}", flush=True)
 
     # AD/LDAP activado pero sin la librería = el directorio NUNCA responderá y todos los logins
     # de dominio caerán a local en silencio. Sin este aviso, el administrador cree tener AD
     # funcionando y solo ve que "los usuarios del dominio no entran", sin ninguna pista.
     if LDAP_ENABLED and not ldap_auth.LDAP_AVAILABLE:
-        print("  \033[33m⚠️  AD/LDAP está ACTIVADO pero falta la librería 'ldap3': el directorio "
+        print("  \033[33m AD/LDAP está ACTIVADO pero falta la librería 'ldap3': el directorio "
               "no se consultará\033[0m", flush=True)
         print("     \033[2mReconstruye la imagen con:  docker compose build --build-arg "
               "WITH_LDAP=1\033[0m", flush=True)
@@ -3327,13 +3339,13 @@ def main():
         _ldaps = LDAP_CONFIG.get("uri", "").lower().startswith("ldaps")
         _ca = bool(LDAP_CONFIG.get("tls_cacert"))
         if not _ldaps:
-            print("  \033[33m⚠️  AD/LDAP en CLARO (ldap://): las contraseñas de dominio viajan sin "
+            print("  \033[33m AD/LDAP en CLARO (ldap://): las contraseñas de dominio viajan sin "
                   "cifrar por la red. Usa ldaps://\033[0m", flush=True)
         elif not _ca:
-            print("  \033[33m⚠️  LDAPS sin CA (HYLANLOCK_LDAP_TLS_CACERT vacío): se cifra, pero NO "
+            print("  \033[33m LDAPS sin CA (HYLANLOCK_LDAP_TLS_CACERT vacío): se cifra, pero NO "
                   "se valida el certificado del DC\033[0m", flush=True)
         else:
-            print("  🔗 AD/LDAP: LDAPS con validación de certificado", flush=True)
+            print("  AD/LDAP: LDAPS con validación de certificado", flush=True)
 
     print_banner(url)
     # Solo abrir navegador en un equipo de escritorio (Windows). En el servidor

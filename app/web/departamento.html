@@ -41,11 +41,11 @@
 
   <section class="panel">
     <div id="upload-part" style="display:__D_UP__">
-      <h2 class="sec">📤 Subir a esta carpeta</h2>
+      <h2 class="sec">Subir a esta carpeta</h2>
       <label class="drop" id="drop"><input type="file" id="file" multiple>
-        <span class="ic">📁</span>Toca para <b>elegir archivos</b><br>o arrástralos aquí</label>
+        <span class="ic"></span>Toca para <b>elegir archivos</b><br>o arrástralos aquí</label>
       <input type="file" id="folder" webkitdirectory directory multiple style="display:none">
-      <button id="pickfolder" class="btn2">📂 Elegir carpeta entera</button>
+      <button id="pickfolder" class="btn2">Elegir carpeta entera</button>
       <div id="global" class="global" style="display:none">
         <div class="gtxt" id="gtxt">Preparando…</div>
         <div class="gbar"><span id="gbar"></span></div>
@@ -55,8 +55,8 @@
     </div>
 
     <div id="files-part" style="display:__D_LS__">
-      <h2 class="sec">📥 Archivos <span id="count"></span></h2>
-      <input type="search" id="fsearch" class="fsearch" placeholder="🔎 Buscar por nombre…" autocomplete="off">
+      <h2 class="sec">Archivos <span id="count"></span></h2>
+      <input type="search" id="fsearch" class="fsearch" placeholder="Buscar por nombre…" autocomplete="off">
       <div class="flist" id="flist">
         <div class="empty">Cargando…</div>
       </div>
@@ -133,11 +133,11 @@
         try {
           const res = await putChunk(id, offset, blob, loaded => show(offset + loaded));
           if (res.status === 200 || res.status === 409) { offset = JSON.parse(res.text).received; done = true; }
-          else if (res.status === 401) { meta.className = 'meta err'; meta.textContent = '🔒 Sesion caducada. Recarga.'; return false; }
+          else if (res.status === 401) { meta.className = 'meta err'; meta.textContent = 'Sesion caducada. Recarga.'; return false; }
           else throw new Error(res.text || ('HTTP ' + res.status));
         } catch (e) {
           tries++;
-          if (tries > 12) { meta.className = 'meta warn'; meta.textContent = `⏸ Pausado. Pulsa Subir para reanudar.`; return false; }
+          if (tries > 12) { meta.className = 'meta warn'; meta.textContent = `Pausado. Pulsa Subir para reanudar.`; return false; }
           meta.className = 'meta warn'; meta.textContent = `… reconectando (intento ${tries})`;
           await sleep(Math.min(1500 * tries, 6000)); offset = await getOffset(id); done = false;
         }
@@ -148,37 +148,31 @@
         method: 'POST',
         headers: { 'X-Filename': encodeURIComponent(item.path) }
       });
-      if (r.ok) { bar.style.width = '100%'; meta.className = 'meta ok'; meta.textContent = '✅ Subido'; return true; }
-      meta.className = 'meta err'; meta.textContent = '❌ Error al finalizar'; return false;
-    } catch (e) { meta.className = 'meta err'; meta.textContent = '❌ Error al finalizar'; return false; }
+      if (r.ok) { bar.style.width = '100%'; meta.className = 'meta ok'; meta.textContent = 'Subido'; return true; }
+      meta.className = 'meta err'; meta.textContent = 'Error al finalizar'; return false;
+    } catch (e) { meta.className = 'meta err'; meta.textContent = 'Error al finalizar'; return false; }
   }
   sendBtn.addEventListener('click', async () => {
     sendBtn.disabled = true; fileInput.disabled = true;
     let allok = true;
     for (let i = 0; i < items.length; i++) { const ok = await uploadFile(items[i], i); allok = allok && ok; }
-    sendBtn.textContent = allok ? '¡Listo! ✔' : 'Reanudar ⟳';
+    sendBtn.textContent = allok ? '¡Listo! ' : 'Reanudar ⟳';
     refreshList();
     setTimeout(() => { sendBtn.textContent = 'Subir al departamento'; sendBtn.disabled = false; fileInput.disabled = false; }, 2600);
   });
 
   // ---- Lista de archivos del departamento (descargar) ----
-  function icon(name) {
-    const e = (name.split('.').pop() || '').toLowerCase();
-    if (['zip', '7z', 'rar', 'gz', 'iso'].includes(e)) return '🗜️';
-    if (['nes', 'snes', 'gba', 'gb', 'n64', 'z64', 'nds', 'bin', 'rom', 'sfc', 'gbc', 'cia', 'xci', 'nsp', 'wbfs'].includes(e)) return '🎮';
-    if (['mp4', 'mkv', 'avi', 'mov'].includes(e)) return '🎬';
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(e)) return '🖼️';
-    if (['pdf', 'doc', 'docx', 'txt'].includes(e)) return '📄';
-    if (['mp3', 'wav', 'ogg', 'm4a'].includes(e)) return '🎵';
-    if (['exe', 'msi', 'apk'].includes(e)) return '⚙️'; return '📄';
+  // Icono monocromo ÚNICO para cualquier archivo (aspecto sobrio y uniforme, sin emojis de colores).
+  function icon() {
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
   }
   let allFiles = [];
   function rowHtml(f) {
     const sh = f.sha256 ? `<div class="fh" title="SHA-256: ${f.sha256}&#10;(clic para copiar)"
-    onclick="hylCopiar('${f.sha256}', this)">🔒 ${f.sha256.slice(0, 12)}…</div>` : '';
+    onclick="hylCopiar('${f.sha256}', this)">${f.sha256.slice(0, 12)}…</div>` : '';
     return `<div class="frow"><span class="fic">${icon(f.name)}</span>
   <span class="fn">${f.name}${sh}</span><span class="fs">${fmt(f.size)}</span>
-  <a class="dl" href="__DLBASE__/download?file=${encodeURIComponent(f.name)}" download="${f.name}">⬇️</a></div>`;
+  <a class="dl" href="__DLBASE__/download?file=${encodeURIComponent(f.name)}" download="${f.name}" title="Descargar" aria-label="Descargar"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M5 21h14"/></svg></a></div>`;
   }
   // Filtro por nombre en el navegador: instantáneo y sin recargar (la lista ya está cargada).
   function renderList() {

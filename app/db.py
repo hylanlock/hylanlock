@@ -257,7 +257,7 @@ def upsert_ldap_user(username, scope="member", boss=0):
 
     Devuelve el id del usuario, o **None si el nombre ya pertenece a una cuenta LOCAL**.
 
-    ⚠️ Esa negativa es la parte importante. Sin ella, un usuario cualquiera del directorio que se
+    Esa negativa es la parte importante. Sin ella, un usuario cualquiera del directorio que se
     llame igual que una cuenta local se APODERA de ella: al entrar, su scope/boss sobrescriben los
     de la cuenta local. Probado el 2026-08-26 contra el LDAP de pruebas: un usuario del directorio
     SIN ningún grupo privilegiado, llamado como el administrador local, lo dejó en 'member' —
@@ -671,7 +671,7 @@ def user_visible_departments(username):
             if uid is None:
                 return []
             # ¿Tiene dept.view GLOBAL? -> ve todos los departamentos (admin/director).
-            # ⚠️ 'subfolder_id IS NULL' es imprescindible: las concesiones de SUBCARPETA también
+            # 'subfolder_id IS NULL' es imprescindible: las concesiones de SUBCARPETA también
             # llevan department_id NULL, y sin este filtro se leerían como "global" -> un
             # depositario de una sola subcarpeta vería TODOS los departamentos.
             glob = c.execute(
@@ -1076,7 +1076,7 @@ def is_service_account(username):
 
 
 # ------------------------------------------------------------------ Novedades (avisos in-app)
-# ⚠️ El nombre de la carpeta viaja dentro del texto del evento, con este formato. Escritor y lector
+# El nombre de la carpeta viaja dentro del texto del evento, con este formato. Escritor y lector
 # usan LA MISMA función a propósito: si el formato cambiara en un solo sitio, los avisos dejarían de
 # encontrar nada y el fallo sería silencioso.
 def folder_tag(dep, sub=None):
@@ -1298,7 +1298,7 @@ def has_permission(username, perm, dept_slug=None, sub_slug=None):
       (head/director/it_admin) sobre el departamento. Ser 'employee' del depto NO basta:
       las subcarpetas son privadas desde que nacen (decisión de Nicolás, 2026-08-25).
 
-    ⚠️ Ojo con las asignaciones de subcarpeta al preguntar por departamento: llevan
+    Ojo con las asignaciones de subcarpeta al preguntar por departamento: llevan
     department_id NULL, que en la consulta de depto significaría "global". Por eso todas las
     ramas que no son de subcarpeta exigen 'ur.subfolder_id IS NULL'."""
     try:

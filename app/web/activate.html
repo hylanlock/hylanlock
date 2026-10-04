@@ -20,7 +20,7 @@
 <body>
   <div class="card">
     <div class="brand">
-      <div class="logo">🔐</div>
+      <div class="logo"></div>
       <div>
         <h1>Activa tu cuenta</h1>
         <div class="sub">Crea tu contraseña para empezar a usar Hylanlock</div>
@@ -34,7 +34,7 @@
       <div class="pwrow">
         <input type="password" name="password" id="p1" placeholder="Tu nueva contraseña" autofocus
           autocomplete="new-password" minlength="__MINLEN__">
-        <button type="button" class="genbtn" onclick="sugerir()">🔑 Sugerir</button>
+        <button type="button" class="genbtn" onclick="sugerir()">Sugerir</button>
       </div>
       <input type="password" name="password2" id="p2" placeholder="Repite la contraseña"
         autocomplete="new-password" minlength="6">
@@ -56,7 +56,7 @@
       document.getElementById('p1').value = out;
       document.getElementById('p2').value = out;
       const h = document.getElementById('hint');
-      h.textContent = '⚠️ Copia esta contraseña ahora: ' + out;
+      h.textContent = 'Copia esta contraseña ahora: ' + out;
       h.classList.remove('hide');
     }
   </script>
