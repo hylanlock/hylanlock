@@ -872,16 +872,16 @@ STEPUP_PAGE    = "elevate.html"
 # El <head> aplica el tema guardado ANTES de pintar (sin parpadeo); el botón lo cambia.
 _THEME_HEAD = ('<script>(function(){try{var t=localStorage.getItem("hyl-theme");'
                'if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>')
+# Icono ESTÁTICO de "cambiar tema" (contraste): no cambia de forma, solo alterna el tema al pulsar.
 _THEME_TOGGLE = (
     '<button type="button" id="hyl-theme-btn" aria-label="Cambiar tema claro/oscuro" '
-    'onclick="(function(b){var r=document.documentElement,'
+    'onclick="(function(){var r=document.documentElement,'
     "c=r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),"
     "n=c==='dark'?'light':'dark';r.setAttribute('data-theme',n);"
-    "try{localStorage.setItem('hyl-theme',n);}catch(e){}"
-    "b.textContent=n==='dark'?'\\u2600\\ufe0f':'\\ud83c\\udf19';})(this)\">\U0001f319</button>"
-    '<script>(function(){var r=document.documentElement,b=document.getElementById("hyl-theme-btn"),'
-    'd=r.getAttribute("data-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");'
-    'b.textContent=d==="dark"?"\\u2600\\ufe0f":"\\ud83c\\udf19";})();</script>')
+    "try{localStorage.setItem('hyl-theme',n);}catch(e){}})()\">"
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" '
+    'stroke-width="2"><circle cx="12" cy="12" r="9"/>'
+    '<path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg></button>')
 
 
 def _valid_hex(c):
