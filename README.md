@@ -83,6 +83,16 @@ de prueba. Copias de seguridad en [`BACKUPS.md`](docs/BACKUPS.md); servir por HT
 **Fase de validación.** El producto está construido, probado y auditado; buscamos las primeras empresas
 que quieran probarlo y ayudar a mejorarlo con feedback real. Web: <https://hylanlock.vercel.app>
 
+## Sobre el desarrollo
+
+El **diseño, la arquitectura y todas las decisiones** de Hylanlock —el modelo de permisos, la
+seguridad, el enfoque self-hosted— son de **Nicolás Muñoz Rodríguez**. La implementación se ha escrito
+con ayuda de **IA**, bajo esa dirección y criterio.
+
+Lo decimos de frente por la misma razón por la que el código es *source-available*: **no hace falta
+fiarse de nadie, se puede leer entero.** El núcleo es Python de biblioteca estándar, sin dependencias
+—auditable en una tarde—, precisamente para que cualquiera compruebe qué hace.
+
 ## Licencia
 
 Hylanlock se publica bajo la **Business Source License 1.1** (ver [`LICENSE`](LICENSE)):

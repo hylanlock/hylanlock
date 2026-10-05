@@ -48,6 +48,13 @@ PRUEBA-AD-WINDOWS.md
 Guia-de-instalacion-*.docx
 Guia-de-instalacion-*.pdf
 
+# ⛔ SECRETO: token de API de Apify (y cualquier token). NUNCA al repo.
+apify/
+apify_token.txt
+**/apify_token.txt
+*_token.txt
+**/*_token.txt
+
 # Varios
 *.bak
 
