@@ -18,6 +18,8 @@
   .nov .nrow:first-of-type { border-top: none; }
   .nov .nf { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .nov .nrow > .fic { flex: none; color: var(--muted); display: flex; }
+  /* OJO: hay un 'button { width:100% }' global que aplastaba el texto contiguo (nombre en vertical). */
+  .nov button.marcar, .nov button.vista { width: auto; flex: none; }
   .nov button.vista { display: flex; align-items: center; }
   .nov .nm { color: var(--muted); font-size: .78rem; }
   .nov a.go { text-decoration: none; color: var(--accent); font-weight: 600; white-space: nowrap; }
