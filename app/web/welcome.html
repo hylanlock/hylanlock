@@ -16,7 +16,9 @@
   .nov .nrow { display: flex; align-items: center; gap: 10px; padding: 8px 0;
     border-top: 1px solid var(--border); font-size: .87rem; }
   .nov .nrow:first-of-type { border-top: none; }
-  .nov .nf { flex: 1; word-break: break-all; }
+  .nov .nf { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .nov .nrow > .fic { flex: none; color: var(--muted); display: flex; }
+  .nov button.vista { display: flex; align-items: center; }
   .nov .nm { color: var(--muted); font-size: .78rem; }
   .nov a.go { text-decoration: none; color: var(--accent); font-weight: 600; white-space: nowrap; }
   .nov .nhead { display: flex; align-items: flex-start; gap: 12px; }
@@ -60,10 +62,10 @@
         ? 'Ha llegado 1 archivo nuevo desde tu última visita.'
         : `Han llegado ${n.total} archivos nuevos desde tu última visita.`;
       lista.innerHTML = n.items.map(i => `<div class="nrow">
-        <span></span>
+        <span class="fic"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
         <span class="nf">${esc(i.file)}<div class="nm">${esc(i.folder_name)} · lo dejó ${esc(i.who)} · ${esc(i.ts)}</div></span>
         <button class="vista" type="button" data-carpeta="${esc(i.folder)}"
-                title="Marcar como leído lo de ${esc(i.folder_name)}"></button>
+                title="Marcar como leído lo de ${esc(i.folder_name)}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <a class="go" href="${esc(i.url)}">Abrir →</a></div>`).join('');
     }
 

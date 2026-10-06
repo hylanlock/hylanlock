@@ -63,6 +63,22 @@ BRAND_LOGO = _env("BRAND_LOGO", "")          # logo del sidebar: vacío = candad
 BRAND_LOGO_SVG = ('<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" '
                   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
                   '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>')
+
+
+def _nav_svg(inner):
+    """Icono SVG monocromo de 18px que hereda el color del texto (para el menú lateral)."""
+    return ('<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" '
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>')
+
+
+_NAV_ICONS = {
+    "home":     _nav_svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
+    "building": _nav_svg('<rect x="4" y="3" width="16" height="18" rx="1"/>'
+                         '<path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>'),
+    "user":     _nav_svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
+    "shield":   _nav_svg('<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/>'),
+    "list":     _nav_svg('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
+}
 ACCENT = _env("ACCENT", "").strip()            # color de acento (#rrggbb); vacío = el de fábrica
 
 # Provisioning del admin (despliegue automático / Docker). Si NO hay usuarios y se define
@@ -1780,14 +1796,14 @@ class Handler(BaseHTTPRequestHandler):
             total_nuevas = sum(nuevas.values())
         except Exception:
             total_nuevas = 0
-        parts = [link("/", "", "Inicio", total_nuevas),
-                 link("/departamentos", "", "Departamentos", total_nuevas),
-                 link("/perfil", "", "Mi perfil")]
+        parts = [link("/", _NAV_ICONS["home"], "Inicio", total_nuevas),
+                 link("/departamentos", _NAV_ICONS["building"], "Departamentos", total_nuevas),
+                 link("/perfil", _NAV_ICONS["user"], "Mi perfil")]
         admin = []
         if self._is_admin():                       # users.manage (it_admin)
-            admin.append(link("/admin", "", "Administración"))
+            admin.append(link("/admin", _NAV_ICONS["shield"], "Administración"))
         if self._has("audit.view"):
-            admin.append(link("/log", "", "Registro"))
+            admin.append(link("/log", _NAV_ICONS["list"], "Registro"))
         if admin:
             parts.append('<div class="nav-lbl">Administración</div>')
             parts.extend(admin)
