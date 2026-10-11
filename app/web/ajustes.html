@@ -1,0 +1,69 @@
+<!-- Fragmento de contenido: AJUSTES. Lo envuelve layout.html (shell + sidebar). -->
+<style>
+  .aj-card { margin-top: 12px; background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+    border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+  .aj-card .ttl { font-weight: 700; font-size: .98rem; }
+  .aj-card .dsc { color: var(--muted); font-size: .84rem; margin-top: 3px; }
+  .seg { display: inline-flex; margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .seg button { margin: 0; width: auto; padding: 9px 16px; font-size: .88rem; border: none; border-radius: 0;
+    background: var(--surface); color: var(--muted); box-shadow: none; font-weight: 600; }
+  .seg button.on { background: var(--accent-weak); color: var(--accent); }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button:disabled { cursor: default; opacity: .7; }
+  .planbadge { display: inline-block; font-size: .82rem; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
+  .ajlink { display: inline-block; margin-top: 10px; color: var(--accent); text-decoration: none; font-weight: 600; font-size: .88rem; }
+  .softnote { color: var(--faint); font-size: .8rem; margin-top: 14px; }
+</style>
+
+<div class="content-head">
+  <div class="logo"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.2a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 4 15H3a2 2 0 0 1 0-4h.2A1.6 1.6 0 0 0 4.6 8.5l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V3a2 2 0 0 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 0 1 0 4h-.2a1.6 1.6 0 0 0-1.4.9z"/></svg></div>
+  <div>
+    <h1>Ajustes</h1>
+    <div class="sub">Configuración de tu Hylanlock</div>
+  </div>
+</div>
+
+<h2 class="sec">Apariencia</h2>
+<div class="aj-card">
+  <div class="ttl">Tema</div>
+  <div class="dsc">Claro, oscuro, o según tu sistema. Se recuerda en este navegador.</div>
+  <div class="seg" id="theme-seg">
+    <button type="button" data-v="system" onclick="setTheme('system',this)">Sistema</button>
+    <button type="button" data-v="light" onclick="setTheme('light',this)">Claro</button>
+    <button type="button" data-v="dark" onclick="setTheme('dark',this)">Oscuro</button>
+  </div>
+</div>
+
+<h2 class="sec">Idioma</h2>
+<div class="aj-card">
+  <div class="ttl">Idioma de la interfaz</div>
+  <div class="dsc">Por ahora, español. Más idiomas próximamente.</div>
+  <div class="seg">
+    <button type="button" class="on" disabled>Español</button>
+    <button type="button" disabled>English (pronto)</button>
+  </div>
+</div>
+
+__ADMINBLOCK__
+
+<h2 class="sec">Acerca de</h2>
+<div class="aj-card">
+  <div class="ttl">Hylanlock</div>
+  <div class="dsc">Versión __VERSION__ · software self-hosted de transferencia de archivos para empresas.</div>
+  <a class="ajlink" href="https://hylanlock.vercel.app" target="_blank" rel="noopener">hylanlock.vercel.app</a>
+</div>
+
+<script>
+  function setTheme(v, btn) {
+    const r = document.documentElement;
+    if (v === 'light' || v === 'dark') r.setAttribute('data-theme', v);
+    else r.removeAttribute('data-theme');
+    try { if (v === 'system') localStorage.removeItem('hyl-theme'); else localStorage.setItem('hyl-theme', v); } catch (e) {}
+    document.querySelectorAll('#theme-seg button').forEach(b => b.classList.toggle('on', b === btn));
+  }
+  (function () {
+    let cur = 'system'; try { cur = localStorage.getItem('hyl-theme') || 'system'; } catch (e) {}
+    const b = document.querySelector('#theme-seg button[data-v="' + cur + '"]');
+    if (b) b.classList.add('on');
+  })();
+</script>

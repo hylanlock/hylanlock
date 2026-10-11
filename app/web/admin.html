@@ -588,6 +588,30 @@
           <select id="sa-r-${esc(sf.slug)}">${roles}</select>
           <button class="mini" onclick="addSubAccess('${esc(sf.slug)}')">Dar acceso</button></div>`
         : '<div class="sub" style="margin-top:8px">Todos los usuarios ya tienen acceso.</div>';
+      const links = (sf.links || []).map(l => {
+        const cad = l.expires_at ? ' · caduca ' + esc(l.expires_at.slice(0, 16)) : '';
+        const uno = l.one_shot ? ' · un solo archivo' : ' · varios archivos';
+        return `<div class="row">
+          <span class="ic"></span>
+          <div class="main"><div class="t">Enlace de buzón${l.label ? ' · ' + esc(l.label) : ''}</div>
+            <div class="d">creado ${esc((l.created_at || '').slice(0, 10))}${cad}${uno}</div></div>
+          <button class="mini danger" onclick="revocarEnlace('${esc(sf.slug)}',${l.id})">Revocar</button></div>`;
+      }).join('');
+      const linkBox = `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+          <div class="d" style="margin-bottom:6px">Enlaces para compartir — dejar archivos sin cuenta (caducan solos)</div>
+          ${links}
+          <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            <input id="bl-${esc(sf.slug)}" placeholder="Etiqueta (opcional)" style="flex:1;min-width:140px">
+            <select id="bh-${esc(sf.slug)}">
+              <option value="1">Caduca en 1 hora</option>
+              <option value="8">Caduca en 8 horas</option>
+              <option value="24" selected>Caduca en 24 horas</option>
+              <option value="168">Caduca en 7 días</option></select>
+            <label class="sub" style="display:flex;align-items:center;gap:6px;font-size:.82rem;margin:0">
+              <input type="checkbox" id="bo-${esc(sf.slug)}" checked style="width:auto">un solo archivo</label>
+            <button class="mini" onclick="crearEnlace('${esc(sf.slug)}')">Crear enlace</button></div>
+          <div id="blout-${esc(sf.slug)}" class="hide" style="margin-top:8px"></div>
+        </div>`;
       return `<div class="row" style="display:block">
         <div style="display:flex;align-items:center;gap:10px">
           <span class="ic"></span>
@@ -595,7 +619,8 @@
             <div class="d">${sf.acl.length} con acceso explícito</div></div>
           <button class="mini danger" onclick="delSub('${esc(sf.slug)}','${esc(sf.name)}')"></button>
         </div>
-        <div style="margin-top:10px;padding-left:6px">${acl}${add}</div></div>`;
+        <div style="margin-top:10px;padding-left:6px">${acl}${add}</div>
+        ${linkBox}</div>`;
     }).join('');
   }
   async function addSub() {
@@ -624,6 +649,33 @@
     const r = await post('/admin/sub/access', { dep: SUB_DEP, sub, user, role });
     if (r.stepup) return;
     if (!r.ok) { alert(r.error || 'No se pudo cambiar el acceso'); return; }
+    await loadSubs();
+  }
+  async function crearEnlace(sub) {
+    const label = (document.getElementById('bl-' + sub) || {}).value || '';
+    const hours = (document.getElementById('bh-' + sub) || {}).value || '24';
+    const one_shot = (document.getElementById('bo-' + sub) || {}).checked ? '1' : '';
+    const r = await post('/admin/sub/link', { dep: SUB_DEP, sub, label, hours, one_shot });
+    if (r.stepup) return;
+    if (!r.ok) { alert(r.error || 'No se pudo crear el enlace'); return; }
+    const url = (r.json && r.json.url) || '';
+    const out = document.getElementById('blout-' + sub);
+    if (out) {
+      out.classList.remove('hide');
+      out.innerHTML = `<div class="d" style="margin-bottom:4px;color:var(--ok)">Enlace creado. Cópialo ahora (por seguridad no se vuelve a mostrar):</div>
+        <div style="display:flex;gap:8px"><input readonly value="${esc(url)}" style="flex:1" onclick="this.select()">
+        <button class="mini" onclick="copyUrl('${esc(url)}', this)">Copiar</button></div>
+        <div class="sub" style="margin-top:6px;font-size:.78rem">Compártelo solo con quien deba dejar archivos. Aparecerá en la lista al recargar.</div>`;
+    }
+  }
+  function copyUrl(u, btn) {
+    try { if (navigator.clipboard) navigator.clipboard.writeText(u); btn.textContent = 'Copiado'; setTimeout(() => { btn.textContent = 'Copiar'; }, 1200); } catch (e) {}
+  }
+  async function revocarEnlace(sub, id) {
+    if (!confirm('¿Revocar este enlace? Quien lo tenga dejará de poder dejar archivos.')) return;
+    const r = await post('/admin/sub/link/revoke', { dep: SUB_DEP, sub, id });
+    if (r.stepup) return;
+    if (!r.ok) { alert(r.error || 'No se pudo revocar'); return; }
     await loadSubs();
   }
 

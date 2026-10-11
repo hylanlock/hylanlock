@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylanlock · Dejar un archivo</title>
+  <style>
+    __CSS__
+    .hide { display: none !important; }
+    #drop input[type=file] { display: none; }
+    .item { background: var(--surface-2); border: 1px solid var(--border); border-radius: 13px;
+      padding: 11px 14px; margin-top: 10px; }
+    .item .nm { font-size: .88rem; word-break: break-all; }
+    .item .meta { font-size: .76rem; color: var(--muted); margin-top: 4px; }
+    .item .meta.ok { color: var(--ok); } .item .meta.err { color: var(--err); } .item .meta.warn { color: var(--warn); }
+    .bar { height: 8px; background: var(--surface-3); border-radius: 6px; overflow: hidden;
+      margin-top: 8px; border: 1px solid var(--border); }
+    .bar > span { display: block; height: 100%; width: 0; background: var(--accent-grad); transition: width .15s; }
+    .lbl { display: block; margin-top: 16px; font-size: .85rem; color: var(--muted); font-weight: 600; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+      <div>
+        <h1>Dejar un archivo</h1>
+        <div class="sub">__LABEL__</div>
+      </div>
+    </div>
+    <span class="badge"><span class="dot"></span> Buzón de entrega · red local</span>
+    __ERR__
+    <div id="form" class="__FORMCLS__">
+      <label class="lbl" for="dropper">Tu nombre <span style="font-weight:400;color:var(--faint)">(opcional)</span></label>
+      <input type="text" id="dropper" class="inp" placeholder="Para que sepan quién lo dejó" maxlength="60" style="margin-top:6px">
+      <label class="drop" id="drop" style="margin-top:14px"><input type="file" id="file" multiple>
+        <span class="ic"><svg viewBox="0 0 28 28" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 17V5"/><path d="M9 10l5-5 5 5"/><path d="M5 19h18"/></svg></span>
+        Toca para <b>elegir un archivo</b><br>o arrástralo aquí</label>
+      <div id="list"></div>
+      <button id="send" disabled>Enviar</button>
+      <div class="sub" style="margin-top:12px;font-size:.78rem">Solo puedes <b>dejar</b> archivos aquí; no verás lo que ya hay dentro. Nada sale de la red local.</div>
+    </div>
+    <div style="margin-top:16px;text-align:center">
+      <a href="/login" style="color:var(--muted);text-decoration:none;font-size:.85rem">Ir a Hylanlock</a>
+    </div>
+  </div>
+  <script>
+    const TOKEN = "__TOKEN__";
+    const CHUNK = 16 * 1024 * 1024;
+    const fileInput = document.getElementById('file'), drop = document.getElementById('drop'),
+      list = document.getElementById('list'), sendBtn = document.getElementById('send');
+    let items = [];
+    function fmt(n) { const u = ['B','KB','MB','GB','TB']; let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return n.toFixed(1) + ' ' + u[i]; }
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    function rid() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+    function setItems(fl) { items = Array.from(fl).map(f => ({ file: f, id: rid() })); render(); }
+    function render() {
+      list.innerHTML = '';
+      items.forEach((it, i) => {
+        const d = document.createElement('div'); d.className = 'item';
+        d.innerHTML = `<div class="nm">${it.file.name.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}</div>
+          <div class="meta" id="m${i}">${fmt(it.file.size)}</div><div class="bar"><span id="b${i}"></span></div>`;
+        list.appendChild(d);
+      });
+      sendBtn.disabled = items.length === 0;
+    }
+    fileInput.addEventListener('change', e => setItems(e.target.files));
+    ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+    ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+    drop.addEventListener('drop', e => setItems(e.dataTransfer.files));
+    function putChunk(id, offset, blob, onprog) {
+      return new Promise((res, rej) => {
+        const x = new XMLHttpRequest(); x.open('POST', `/b/${TOKEN}/chunk`, true);
+        x.setRequestHeader('X-Upload-Id', id); x.setRequestHeader('X-Offset', offset);
+        x.upload.onprogress = e => { if (e.lengthComputable && onprog) onprog(e.loaded); };
+        x.onload = () => res({ status: x.status, text: x.responseText });
+        x.onerror = () => rej(new Error('net')); x.send(blob);
+      });
+    }
+    async function uploadOne(it, i) {
+      const f = it.file, meta = document.getElementById('m' + i), bar = document.getElementById('b' + i);
+      let offset = 0;
+      const show = t => { bar.style.width = (f.size ? t / f.size * 100 : 0) + '%'; meta.className = 'meta'; meta.textContent = `${fmt(t)} / ${fmt(f.size)}`; };
+      while (offset < f.size) {
+        const end = Math.min(offset + CHUNK, f.size), blob = f.slice(offset, end);
+        let done = false, tries = 0;
+        while (!done) {
+          try {
+            const r = await putChunk(it.id, offset, blob, loaded => show(offset + loaded));
+            if (r.status === 200 || r.status === 409) { offset = JSON.parse(r.text).received; done = true; }
+            else if (r.status === 429) { meta.className = 'meta warn'; meta.textContent = 'Demasiadas subidas, espera…'; await sleep(3000); }
+            else if (r.status === 507) { meta.className = 'meta warn'; meta.textContent = 'Almacén temporal lleno, reintenta luego.'; await sleep(3000); }
+            else { meta.className = 'meta err'; meta.textContent = 'Error al subir'; return false; }
+          } catch (e) {
+            tries++; if (tries > 10) { meta.className = 'meta warn'; meta.textContent = 'Pausado. Reintenta.'; return false; }
+            meta.className = 'meta warn'; meta.textContent = `… reconectando (${tries})`; await sleep(Math.min(1500 * tries, 6000));
+          }
+        }
+        show(offset);
+      }
+      try {
+        const dropper = encodeURIComponent((document.getElementById('dropper').value || '').trim());
+        const r = await fetch(`/b/${TOKEN}/complete?id=${it.id}`, {
+          method: 'POST', headers: { 'X-Filename': encodeURIComponent(f.name), 'X-Dropper': dropper }
+        });
+        if (r.ok) { bar.style.width = '100%'; meta.className = 'meta ok'; meta.textContent = 'Entregado ✓'; return true; }
+        if (r.status === 415) { meta.className = 'meta err'; meta.textContent = await r.text(); return false; }
+        if (r.status === 429) { meta.className = 'meta warn'; meta.textContent = 'Demasiadas entregas, espera un momento.'; return false; }
+        meta.className = 'meta err'; meta.textContent = 'Error al finalizar'; return false;
+      } catch (e) { meta.className = 'meta err'; meta.textContent = 'Error al finalizar'; return false; }
+    }
+    sendBtn.addEventListener('click', async () => {
+      sendBtn.disabled = true; fileInput.disabled = true;
+      let all = true;
+      for (let i = 0; i < items.length; i++) { const ok = await uploadOne(items[i], i); all = all && ok; }
+      sendBtn.textContent = all ? '¡Entregado!' : 'Reintentar';
+      setTimeout(() => {
+        sendBtn.textContent = 'Enviar'; sendBtn.disabled = false; fileInput.disabled = false;
+        if (all) { items = []; render(); }
+      }, 2600);
+    });
+  </script>
+</body>
+
+</html>

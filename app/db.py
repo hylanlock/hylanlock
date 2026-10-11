@@ -152,6 +152,22 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_inv_user ON invitations(username);
 
+        -- ---- Enlaces de buzón: subida ANÓNIMA por enlace a una subcarpeta (buzón) ----
+        -- El token (solo su hash en BD) autoriza a DEJAR archivos en UNA subcarpeta concreta, sin
+        -- cuenta. Revocable y reutilizable. Quien tiene el enlace solo suelta; nunca ve el contenido.
+        CREATE TABLE IF NOT EXISTS buzon_links (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          token_hash   TEXT UNIQUE NOT NULL,       -- SHA-256 del token (NUNCA el token en claro)
+          subfolder_id INTEGER NOT NULL,           -- buzón destino
+          label        TEXT,                        -- etiqueta libre para el dueño
+          created_at   TEXT NOT NULL,
+          created_by   TEXT,                        -- quién lo creó
+          revoked_at   TEXT,                        -- NULL = activo; fecha = revocado
+          expires_at   TEXT,                        -- caduca solo (NULL = sin caducidad; los nuevos SIEMPRE la llevan)
+          one_shot     INTEGER NOT NULL DEFAULT 1,  -- 1 = se cierra tras la 1ª entrega; 0 = admite varios
+          FOREIGN KEY (subfolder_id) REFERENCES subfolders(id) ON DELETE CASCADE
+        );
+
         -- ---- Novedades: hasta cuándo ha mirado cada usuario cada carpeta ----
         -- No se duplican notificaciones: las novedades se DERIVAN de la auditoría (tabla events),
         -- que ya registra cada subida con carpeta, autor y hora. Aquí solo se guarda la marca de
@@ -205,7 +221,9 @@ def init_db():
                 ("status",        "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"),
                 ("token_version", "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1"),
                 ("source",        "ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local'"),
-                ("subfolder_id",  "ALTER TABLE user_roles ADD COLUMN subfolder_id INTEGER")):
+                ("subfolder_id",  "ALTER TABLE user_roles ADD COLUMN subfolder_id INTEGER"),
+                ("bl_expires",    "ALTER TABLE buzon_links ADD COLUMN expires_at TEXT"),
+                ("bl_oneshot",    "ALTER TABLE buzon_links ADD COLUMN one_shot INTEGER NOT NULL DEFAULT 1")):
             try:
                 c.execute(_ddl)
             except sqlite3.OperationalError:
@@ -891,6 +909,94 @@ def subfolder_acl(dept_slug, sub_slug):
         return [{"username": u, "role": r} for u, r in rows]
     except Exception:
         return []
+
+
+# ---- Enlaces de buzón (subida anónima por enlace a una subcarpeta) ----
+def create_buzon_link(dept_slug, sub_slug, label="", created_by=None, hours=24, one_shot=True):
+    """Crea un enlace de buzón para una subcarpeta. Guarda SOLO el hash del token. Caduca solo a las
+    'hours' (entre 1 hora y 30 días); one_shot=True se cierra tras la primera entrega. Devuelve el
+    token EN CLARO (no se puede volver a obtener), o None si la subcarpeta no existe."""
+    token = secrets.token_urlsafe(32)
+    th = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = datetime.now()
+    try:
+        hours = int(hours)
+    except (TypeError, ValueError):
+        hours = 24
+    hours = max(1, min(hours, 24 * 30))
+    exp = (now + timedelta(hours=hours)).strftime(_TS)
+    with _lock:
+        c = _connect()
+        sid = _subfolder_id(c, dept_slug, sub_slug)
+        if sid is None:
+            return None
+        c.execute("INSERT INTO buzon_links (token_hash, subfolder_id, label, created_at, created_by, "
+                  "expires_at, one_shot) VALUES (?,?,?,?,?,?,?)",
+                  (th, sid, (label or "").strip()[:120], now.strftime(_TS), created_by, exp,
+                   1 if one_shot else 0))
+        c.commit()
+    return token
+
+
+def peek_buzon_link(token):
+    """Valida un token de buzón SIN consumirlo. Devuelve {id, dept_slug, sub_slug, label, one_shot,
+    expires_at} si es válido (existe, no revocado, NO caducado, la subcarpeta sigue ahí); None si no."""
+    try:
+        th = hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+        with _lock:
+            c = _connect()
+            row = c.execute(
+                "SELECT bl.id, bl.label, bl.expires_at, bl.one_shot, d.slug, sf.slug FROM buzon_links bl "
+                "JOIN subfolders sf ON sf.id = bl.subfolder_id "
+                "JOIN departments d ON d.id = sf.department_id "
+                "WHERE bl.token_hash=? AND bl.revoked_at IS NULL", (th,)).fetchone()
+        if not row:
+            return None
+        lid, label, expires_at, one_shot, dep, sub = row
+        if expires_at:
+            try:
+                if datetime.now() > datetime.strptime(expires_at, _TS):
+                    return None            # caducado -> ya no vale
+            except ValueError:
+                pass
+        return {"id": lid, "dept_slug": dep, "sub_slug": sub, "label": label or "",
+                "one_shot": bool(one_shot), "expires_at": expires_at}
+    except Exception:
+        return None
+
+
+def list_buzon_links(dept_slug, sub_slug):
+    """Enlaces ACTIVOS (ni revocados ni caducados) de un buzón, para el panel. No devuelve el token
+    (solo su hash existe); devuelve id, caducidad y si es de un solo archivo."""
+    try:
+        now = datetime.now().strftime(_TS)
+        with _lock:
+            c = _connect()
+            sid = _subfolder_id(c, dept_slug, sub_slug)
+            if sid is None:
+                return []
+            rows = c.execute(
+                "SELECT id, label, created_at, created_by, expires_at, one_shot FROM buzon_links "
+                "WHERE subfolder_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) "
+                "ORDER BY created_at DESC", (sid, now)).fetchall()
+        return [{"id": i, "label": l or "", "created_at": t, "created_by": cb,
+                 "expires_at": ea, "one_shot": bool(osf)} for i, l, t, cb, ea, osf in rows]
+    except Exception:
+        return []
+
+
+def revoke_buzon_link(link_id):
+    """Revoca un enlace de buzón por su id. Devuelve True si existía (y estaba activo) y se revocó."""
+    now = datetime.now().strftime(_TS)
+    try:
+        with _lock:
+            c = _connect()
+            cur = c.execute("UPDATE buzon_links SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
+                            (now, int(link_id)))
+            c.commit()
+            return cur.rowcount > 0
+    except Exception:
+        return False
 
 
 def user_visible_subfolders(username, dept_slug):

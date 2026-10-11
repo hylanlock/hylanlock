@@ -3,9 +3,37 @@
 Por defecto, Hylanlock habla **HTTP** (sin cifrar). Para una empresa, el tráfico debe ir **cifrado
 (HTTPS)**: contraseñas, archivos y cookies de sesión no deben viajar en claro por la red local.
 
-Este perfil pone **Caddy** (un servidor web ligero) **delante** de Hylanlock: Caddy cifra el tráfico y
-le pasa las peticiones. Hylanlock queda atado a `127.0.0.1`, así **nadie puede saltarse el cifrado**
-hablándole directamente.
+Hay **dos formas** de tener HTTPS: la **integrada** (la más simple, recomendada para la mayoría de
+instalaciones) y, para alta carga o necesidades avanzadas, un **proxy Caddy** delante.
+
+## ✅ La vía más simple: HTTPS integrado (sin proxy)
+
+Hylanlock puede **servir HTTPS él mismo** si le das un certificado y su clave. No hace falta Caddy ni
+tocar los puertos 80/443. Es la forma recomendada para una red local normal.
+
+1. Consigue un **certificado** (`cert.pem`) y su **clave** (`key.pem`). Dos opciones:
+   - **De vuestra CA interna** (típico con dominio Windows / CA propia) → **sin avisos** en vuestros equipos.
+   - **Autofirmado** (para probar) → el navegador avisa hasta que instaléis ese certificado como de confianza.
+2. Móntalos en el contenedor y apúntale a ellos con dos variables. En `docker-compose.yml`, servicio `app`:
+   ```yaml
+   volumes:
+     - ./certs:/certs:ro
+   environment:
+     HYLANLOCK_TLS_CERT: /certs/hylanlock.crt
+     HYLANLOCK_TLS_KEY:  /certs/hylanlock.key
+   ```
+   (En arranque manual: `HYLANLOCK_TLS_CERT=... HYLANLOCK_TLS_KEY=... python3 hylanlock.py`.)
+3. Levanta normal (`docker compose up -d`). El arranque confirmará `HTTPS: certificado propio cargado`
+   y el servicio quedará en **`https://LA-IP-DEL-SERVIDOR:PUERTO`**. La cookie de sesión se marca `Secure`
+   y se emite HSTS automáticamente.
+
+**El candado LAN sigue intacto:** al no haber proxy, Hylanlock ve la IP real del cliente directamente —
+no hay que configurar nada más. Si el certificado o la clave no cargan, el servidor avisa y **no arranca**
+(falla cerrado, nunca sirve en claro por error).
+
+> ¿Cuándo usar Caddy en vez de esto? Si necesitáis redirección automática de `http`→`https` en los
+> puertos 80/443, gestión automática de certificados, o alta carga/concurrencia. Para una PYME normal, la
+> vía integrada de arriba es suficiente.
 
 ## ⚠️ Por qué no es el "HTTPS automático" de siempre
 

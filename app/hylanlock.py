@@ -52,6 +52,12 @@ BIND = _env("BIND", "0.0.0.0")
 # Pista explícita de que se sirve por HTTPS (perfil Caddy): activa la cookie 'Secure' y HSTS. Además
 # se detecta por 'X-Forwarded-Proto: https' del proxy de confianza. Por defecto 0 (LAN por HTTP).
 BEHIND_TLS = _env("BEHIND_TLS", "0").strip().lower() in ("1", "true", "yes")
+# HTTPS PROPIO (sin proxy): si se dan un certificado y su clave (PEM), el servidor sirve cifrado
+# directamente. Es la vía simple para quitar el "No es seguro" sin montar Caddy. Si falta cualquiera
+# de los dos, se sigue sirviendo por HTTP (como hasta ahora). Caddy sigue disponible para alta carga.
+TLS_CERT = _env("TLS_CERT", "").strip()       # ruta al certificado PEM (p. ej. /certs/hylanlock.crt)
+TLS_KEY = _env("TLS_KEY", "").strip()         # ruta a la clave privada PEM (p. ej. /certs/hylanlock.key)
+TLS_ON = bool(TLS_CERT and TLS_KEY)           # True = HTTPS propio activo
 # Enlace de feedback que el producto MUESTRA (no envía nada él mismo: el admin hace clic y rellena en
 # su navegador, así no se rompe la promesa de "nada sale de tu red"). Vacío = no mostrar el aviso.
 FEEDBACK_URL = _env("FEEDBACK_URL", "https://hylanlock.vercel.app/feedback")
@@ -78,8 +84,15 @@ _NAV_ICONS = {
     "user":     _nav_svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
     "shield":   _nav_svg('<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/>'),
     "list":     _nav_svg('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
+    "cog":      _nav_svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1'
+                         'a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.2a1.6 1.6 0'
+                         ' 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 4 15H3a2 2 0 0 1 0-4h.2'
+                         'A1.6 1.6 0 0 0 4.6 8.5l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V3a2 2 0'
+                         ' 0 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1'
+                         ' 2.7H21a2 2 0 0 1 0 4h-.2a1.6 1.6 0 0 0-1.4.9z"/>'),
 }
 ACCENT = _env("ACCENT", "").strip()            # color de acento (#rrggbb); vacío = el de fábrica
+APP_VERSION = _env("VERSION", "1.0")           # versión del producto (visible en Ajustes → Acerca de)
 
 # Provisioning del admin (despliegue automático / Docker). Si NO hay usuarios y se define
 # ADMIN_PASSWORD, se crea el admin en el 1er arranque. (Asistente web de alta: pendiente.)
@@ -871,9 +884,11 @@ def _template(name):
 CSS            = "styles.css"
 LAYOUT_PAGE    = "layout.html"      # shell compartido (sidebar + área de contenido)
 PROFILE_PAGE   = "profile.html"     # perfil del usuario: sus permisos + solicitar acceso
+AJUSTES_PAGE   = "ajustes.html"     # configuración general: tema, idioma, plan, acerca de
 LOGIN_PAGE     = "login.html"
 WELCOME_PAGE   = "welcome.html"     # home: pantalla de bienvenida
 ACTIVATE_PAGE  = "activate.html"    # pantalla pública: activar cuenta / poner contraseña
+BUZON_PAGE     = "buzon.html"       # pantalla pública: dejar un archivo por enlace de buzón
 SETUP_PAGE     = "setup.html"       # asistente de primer arranque (crear admin + licencia)
 BLOCKED_PAGE   = "blocked.html"     # pantalla de bloqueo cuando la licencia no es válida
 LICENSE_PAGE   = "license.html"     # pantalla de admin: estado de licencia + instalar nueva
@@ -969,7 +984,9 @@ def _inject_theme(text):
     """Añade el script de tema y el acento de marca en <head>, el botón antes de </body>, y aplica
     el nombre/logo de marca (__BRAND__/__LOGO__) en TODAS las páginas que pasan por aquí."""
     text = text.replace("<head>", "<head>" + _THEME_HEAD + _ACCENT_STYLE + _PWA_HEAD, 1)
-    text = text.replace("</body>", _THEME_TOGGLE + _PWA_SW + "</body>", 1)
+    # El tema se elige ahora en Ajustes (no un botón flotante). _THEME_HEAD sigue aplicando la
+    # preferencia guardada (o la del sistema) en cada página, incluidas login y los enlaces de buzón.
+    text = text.replace("</body>", _PWA_SW + "</body>", 1)
     text = text.replace("__BRAND__", html.escape(BRAND_NAME)).replace("__LOGO__", html.escape(BRAND_LOGO) if BRAND_LOGO else BRAND_LOGO_SVG)
     if BRAND_NAME != "Hylanlock":
         # Rebrand del nombre en textos que aún digan "Hylanlock" (seguro: las clases/ids usan "hyl-").
@@ -1033,6 +1050,22 @@ def render_activate(username="", token="", err="", formcls=""):
                 .replace("__ERR__", err)
                 .replace("__MINLEN__", str(MIN_PASSWORD))
                 .replace("__FORMCLS__", formcls)).encode("utf-8")
+
+
+def render_buzon_drop(ok=True, token="", label="", err=""):
+    """Pantalla PÚBLICA del enlace de buzón: solo zona de soltar. Si el enlace no vale, se oculta
+    el formulario y se muestra el error."""
+    etiqueta = html.escape(label) if label else "Deja aquí tus archivos de forma privada"
+    if not ok:
+        err = ('<div class="err-msg">Este enlace no es válido o se ha revocado. '
+               'Pide uno nuevo a quien te lo compartió.</div>')
+        etiqueta = "Enlace no disponible"
+    return _inject_theme(
+        _template(BUZON_PAGE).replace("__CSS__", _template(CSS))
+                .replace("__TOKEN__", html.escape(token))
+                .replace("__LABEL__", etiqueta)
+                .replace("__ERR__", err)
+                .replace("__FORMCLS__", "" if ok else "hide")).encode("utf-8")
 
 
 def render_setup(err=""):
@@ -1260,6 +1293,7 @@ _GUARD_GET = {
     "/log.csv":                {"perm": "audit.view"},
     "/api/log":                {"perm": "audit.view"},
     "/upload/status":          {},   # solo autenticado
+    "/ajustes":                {},   # Ajustes: autenticado (el bloque de admin se decide dentro)
 }
 _GUARD_POST = {
     "/upload/chunk":           {},
@@ -1291,6 +1325,8 @@ _GUARD_POST = {
     # Subcarpetas y su ACL: misma protección que gestionar departamentos.
     "/admin/sub/add":          {"lan": True, "perm": "depts.manage", "elevated": True},
     "/admin/sub/del":          {"lan": True, "perm": "depts.manage", "elevated": True},
+    "/admin/sub/link":         {"lan": True, "perm": "depts.manage", "elevated": True},
+    "/admin/sub/link/revoke":  {"lan": True, "perm": "depts.manage", "elevated": True},
     "/admin/sub/access":       {"lan": True, "perm": "depts.manage", "elevated": True},
     # Cuentas de servicio (integraciones). Crear una credencial de máquina de larga vida es de lo
     # más sensible del panel: users.manage + step-up.
@@ -1337,6 +1373,29 @@ def api_rate_ok(huella):
         if len(_api_hits) > 500:     # no crecer sin límite si rotan muchas claves
             for k in [k for k, v in _api_hits.items() if not v or ahora - v[-1] > 300]:
                 _api_hits.pop(k, None)
+    return permitido, len(hits)
+
+
+# Límite de ENTREGAS por enlace de buzón (subida anónima): por IP y ventana de 60 s. Acota el abuso
+# de una subida sin login. Se mide en 'complete' (archivo terminado), no en cada trozo, para no
+# romper archivos grandes (muchos trozos). Por defecto 20 archivos/min por IP.
+BUZON_RATE = int(_env("BUZON_RATE", "20"))
+_buzon_hits = {}
+_buzon_hits_lock = threading.Lock()
+
+
+def buzon_rate_ok(ip):
+    """Ventana deslizante de 60 s por IP para las entregas de buzón. Devuelve (permitido, nº)."""
+    ahora = time.time()
+    with _buzon_hits_lock:
+        hits = [t for t in _buzon_hits.get(ip, []) if ahora - t < 60]
+        permitido = len(hits) < BUZON_RATE
+        if permitido:
+            hits.append(ahora)
+        _buzon_hits[ip] = hits
+        if len(_buzon_hits) > 500:
+            for k in [k for k, v in _buzon_hits.items() if not v or ahora - v[-1] > 300]:
+                _buzon_hits.pop(k, None)
     return permitido, len(hits)
 
 
@@ -1413,6 +1472,13 @@ class Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host") or f"127.0.0.1:{PORT}"
         return f"http://{host}/activar?token={token}"
 
+    def _buzon_url(self, token):
+        """URL absoluta de un enlace de buzón, con el Host de la petición. Respeta HTTPS si se sirve
+        cifrado, para que el enlace compartido funcione igual."""
+        host = self.headers.get("Host") or f"127.0.0.1:{PORT}"
+        scheme = "https" if self._tls() else "http"
+        return f"{scheme}://{host}/b/{token}"
+
     def _qr_svg(self, url):
         try:
             return qr.to_svg(qr.encode(url), quiet=2, module=6)
@@ -1430,7 +1496,7 @@ class Handler(BaseHTTPRequestHandler):
         """¿La petición llega por HTTPS? Sirve para marcar la cookie 'Secure' y emitir HSTS.
         Se cree por 'X-Forwarded-Proto: https' SOLO si el peer es un proxy de confianza (mismo
         criterio anti-spoofing que la IP real); o por la pista explícita HYLANLOCK_BEHIND_TLS."""
-        if BEHIND_TLS:
+        if BEHIND_TLS or TLS_ON:
             return True
         peer = self.client_address[0] if self.client_address else ""
         if _TRUSTED_PROXY_NETS and _ip_in(peer, _TRUSTED_PROXY_NETS):
@@ -1798,7 +1864,8 @@ class Handler(BaseHTTPRequestHandler):
             total_nuevas = 0
         parts = [link("/", _NAV_ICONS["home"], "Inicio", total_nuevas),
                  link("/departamentos", _NAV_ICONS["building"], "Departamentos", total_nuevas),
-                 link("/perfil", _NAV_ICONS["user"], "Mi perfil")]
+                 link("/perfil", _NAV_ICONS["user"], "Mi perfil"),
+                 link("/ajustes", _NAV_ICONS["cog"], "Ajustes")]
         admin = []
         if self._is_admin():                       # users.manage (it_admin)
             admin.append(link("/admin", _NAV_ICONS["shield"], "Administración"))
@@ -1824,6 +1891,45 @@ class Handler(BaseHTTPRequestHandler):
                 'background:color-mix(in srgb, var(--warn) 14%, transparent);'
                 'border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);color:var(--warn)">'
                 f'Tu licencia caduca {cuando}.{accion}</div>')
+
+    def _ajustes_admin_block(self):
+        """Secciones de Ajustes SOLO para administradores: plan/licencia y seguridad. Para un
+        miembro normal devuelve '' (solo ve tema, idioma y acerca de)."""
+        if not self._is_admin():
+            return ""
+        st = self._license()
+        status = st.get("status")
+        if status == license.VALID and st.get("type") == "trial":
+            nombre, color = f"Prueba — {st.get('days_left', '?')} día(s)", "var(--warn)"
+            extra = f"Caduca el {html.escape(str(st.get('expires', '—')))}."
+        elif status == license.VALID:
+            nombre, color = "Comercial", "var(--ok)"
+            extra = (f"Cliente: {html.escape(str(st.get('customer') or '—'))} · "
+                     f"caduca {html.escape(str(st.get('expires', '—')))}.")
+        elif status == license.EXPIRED:
+            nombre, color = "Caducada", "var(--err)"
+            extra = "El servicio está bloqueado. Instala una licencia nueva para reactivarlo."
+        else:
+            nombre, color = "Sin licencia", "var(--err)"
+            extra = "El servicio está bloqueado hasta instalar una licencia."
+        plan = (
+            '<h2 class="sec">Plan y licencia</h2>'
+            '<div class="aj-card"><div class="ttl">Plan de este Hylanlock</div>'
+            f'<div style="margin-top:10px"><span class="planbadge" '
+            f'style="background:color-mix(in srgb,{color} 16%,transparent);color:{color};'
+            f'border:1px solid color-mix(in srgb,{color} 35%,transparent)">{html.escape(nombre)}</span></div>'
+            f'<div class="dsc" style="margin-top:8px">{extra}</div>'
+            '<a class="ajlink" href="/admin/licencia">Ver / instalar licencia &rarr;</a></div>'
+        )
+        seguridad = (
+            '<h2 class="sec">Seguridad</h2>'
+            '<div class="aj-card"><div class="ttl">Extensiones bloqueadas al subir</div>'
+            '<div class="dsc">Tipos de archivo que no se pueden subir (ejecutables, etc.).</div>'
+            '<a class="ajlink" href="/admin">Configurar en Administración &rarr;</a></div>'
+        )
+        proximamente = ('<div class="softnote">Próximamente aquí: marca blanca (nombre, logo y color), '
+                        'política de contraseñas y avisos.</div>')
+        return plan + seguridad + proximamente
 
     def _shell(self, content_page, active, title, **markers):
         """Envuelve el fragmento 'content_page' con el shell (sidebar + contenido). El fragmento
@@ -2093,6 +2199,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, render_activate(inv["username"], token))
             return
 
+        if path.startswith("/b/"):
+            # Página PÚBLICA de un enlace de buzón: SOLO zona de soltar. Mismo molde que /activar:
+            # el secreto es el token, pero además se exige red local. Y respeta la licencia.
+            if not self._is_lan():
+                self._send(403, b"Solo desde la red local", "text/plain; charset=utf-8")
+                return
+            token = path[len("/b/"):].split("/")[0]
+            link = db.peek_buzon_link(token) if token else None
+            if not link or not self._license_ok():
+                self._send(200, render_buzon_drop(ok=False))
+                return
+            self._send(200, render_buzon_drop(ok=True, token=token, label=link["label"]))
+            return
+
         # Autorización centralizada (auth + LAN + permiso RBAC) según la política de rutas.
         if not self._enforce("GET", path):
             return
@@ -2110,6 +2230,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, self._shell(DEPTS_PAGE, "/departamentos", "Departamentos"))
         elif path == "/perfil":
             self._send(200, self._shell(PROFILE_PAGE, "/perfil", "Mi perfil"))
+        elif path == "/ajustes":
+            self._send(200, self._shell(AJUSTES_PAGE, "/ajustes", "Ajustes",
+                                        __VERSION__=html.escape(APP_VERSION),
+                                        __ADMINBLOCK__=self._ajustes_admin_block()))
         elif path == "/api/perfil":
             self._json(self._profile_data())
         elif path == "/api/admin/requests":
@@ -2227,7 +2351,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/admin/subfolders":
             dep = os.path.basename(self._query().get("dep", [""])[0])
             self._send(200, json.dumps([
-                dict(sf, acl=db.subfolder_acl(dep, sf["slug"]))
+                dict(sf, acl=db.subfolder_acl(dep, sf["slug"]),
+                     links=db.list_buzon_links(dep, sf["slug"]))
                 for sf in db.list_subfolders(dep)
             ]).encode("utf-8"), "application/json; charset=utf-8")
         elif path == "/api/admin/departments":
@@ -2405,6 +2530,12 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, render_activate(inv["username"], token,
                                                     err=f'<div class="err-msg">{html.escape(res)}</div>',
                                                     formcls="hide"))
+            return
+
+        if path.startswith("/b/") and (path.endswith("/chunk") or path.endswith("/complete")):
+            # Entrega PÚBLICA por enlace de buzón (sin login). Seguridad propia: LAN + licencia +
+            # token válido + rate-limit + bloqueo de extensiones + tope de temporales.
+            self._handle_buzon_drop(path)
             return
 
         # Autorización centralizada (auth + LAN + permiso RBAC) según la política de rutas.
@@ -2689,6 +2820,42 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": True})
                 else:
                     self._json({"error": "Usuario o subcarpeta no encontrados"}, 404)
+        elif path in ("/admin/sub/link", "/admin/sub/link/revoke"):
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = (self._current_user() or (None,))[0]
+            dep = os.path.basename(d.get("dep", [""])[0])
+            if dep not in {x["slug"] for x in db.list_departments()}:
+                self._json({"error": "Departamento no encontrado"}, 404)
+            elif path == "/admin/sub/link":
+                sub = os.path.basename(d.get("sub", [""])[0])
+                label = d.get("label", [""])[0]
+                try:
+                    hours = int(d.get("hours", ["24"])[0])
+                except ValueError:
+                    hours = 24
+                one_shot = d.get("one_shot", [""])[0] in ("1", "on", "true")
+                token = db.create_buzon_link(dep, sub, label, me, hours=hours, one_shot=one_shot)
+                if not token:
+                    self._json({"error": "Subcarpeta no encontrada"}, 404)
+                else:
+                    db.log_event("buzon_link_new", user=me, origin=self._origin(),
+                                 ip=self._client_ip(),
+                                 detail=(f"{dep}/{sub} · {hours}h · "
+                                         + ("1 archivo" if one_shot else "varios")
+                                         + (f" · {label.strip()[:40]}" if label.strip() else "")))
+                    # El token EN CLARO se devuelve aquí y nunca más (en la BD solo queda su hash).
+                    self._json({"ok": True, "url": self._buzon_url(token)})
+            else:   # /admin/sub/link/revoke
+                try:
+                    lid = int(d.get("id", ["0"])[0])
+                except ValueError:
+                    lid = 0
+                if db.revoke_buzon_link(lid):
+                    db.log_event("buzon_link_revoke", user=me, origin=self._origin(),
+                                 ip=self._client_ip(), detail=f"{dep} · enlace #{lid}")
+                    self._json({"ok": True})
+                else:
+                    self._json({"error": "Enlace no encontrado"}, 404)
         elif path in ("/perfil/token/new", "/perfil/token/revoke"):
             d = parse_qs(self._read_body().decode("utf-8", "replace"))
             me = self._username()
@@ -3140,6 +3307,92 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"received": new_size}).encode("utf-8"),
                    "application/json; charset=utf-8")
 
+    def _handle_buzon_drop(self, path):
+        """Rutas PÚBLICAS de un enlace de buzón: POST /b/<token>/chunk y /b/<token>/complete. Van
+        FUERA de _enforce (sin login): la seguridad es LAN + licencia + token válido + rate-limit +
+        bloqueo de extensiones + tope de temporales. Quien deja solo SUELTA, nunca ve el contenido."""
+        parts = path.split("/")                    # ['', 'b', '<token>', 'chunk'|'complete']
+        token = parts[2] if len(parts) > 3 else ""
+        action = parts[3] if len(parts) > 3 else ""
+        if not self._is_lan():
+            self._read_body()
+            self._send(403, b"Solo desde la red local", "text/plain; charset=utf-8")
+            return
+        if not self._license_ok():
+            self._read_body()
+            self._send(403, b"Servicio no disponible", "text/plain; charset=utf-8")
+            return
+        link = db.peek_buzon_link(token)
+        if not link:
+            self._read_body()
+            self._send(403, b"Enlace de buzon no valido o revocado", "text/plain; charset=utf-8")
+            return
+        if action == "chunk":
+            # Reutiliza el acumulador de trozos: no conoce el destino, solo junta bytes en un .part.
+            self._handle_chunk()
+            return
+        if action == "complete":
+            ok, _n = buzon_rate_ok(self._client_ip())
+            if not ok:
+                self._read_body()
+                self._send(429, b"Demasiadas entregas; espera un momento.", "text/plain; charset=utf-8")
+                return
+            self._buzon_complete(link)
+            return
+        self._read_body()
+        self._send(404, b"", "text/plain; charset=utf-8")
+
+    def _buzon_complete(self, link):
+        """Finaliza una entrega por enlace: mueve el .part a la subcarpeta del token, bloquea
+        extensiones, calcula SHA-256 y lo registra en auditoría (con el nombre si lo pusieron)."""
+        q = self._query()
+        uid = safe_id(q.get("id", [""])[0])
+        dep, sub = link["dept_slug"], link["sub_slug"]
+        base = sub_dir(dep, sub)
+        raw_name = self.headers.get("X-Filename", "")
+        filename = unquote(raw_name) if raw_name else "archivo"
+        dropper = (self.headers.get("X-Dropper", "") or "").strip()
+        dropper = unquote(dropper)[:60] if dropper else ""
+        part = os.path.join(PART_DIR, uid + ".part") if uid else ""
+        self._read_body()
+        try:
+            os.makedirs(base, exist_ok=True)
+        except OSError:
+            pass
+        if not uid or not os.path.exists(part):
+            self._send(400, b"No hay datos que finalizar", "text/plain; charset=utf-8")
+            return
+        rel = safe_relpath(filename)
+        _bloq = extension_bloqueada(rel[-1])
+        if _bloq:
+            self._borra(part)
+            db.log_event("upload_blocked", user="enlace de buzon", origin=self._origin(),
+                         ip=self._client_ip(), detail=f"{rel[-1]} · .{_bloq} bloqueada")
+            self._send(415, f"La extensión .{_bloq} está bloqueada por seguridad."
+                       .encode("utf-8"), "text/plain; charset=utf-8")
+            return
+        subdir = os.path.join(base, *rel[:-1])
+        os.makedirs(subdir, exist_ok=True)
+        dest = unique_path(subdir, rel[-1])
+        try:
+            os.replace(part, dest)
+        except OSError as e:
+            self._send(500, str(e).encode("utf-8"), "text/plain; charset=utf-8")
+            return
+        size = os.path.getsize(dest)
+        digest = sha256_file(dest)
+        write_sidecar_hash(dest, digest)
+        quien = f"enlace: {dropper}" if dropper else "enlace de buzón"
+        marca = db.folder_tag(dep, sub)
+        db.log_event("upload_sub", user=quien, origin=self._origin(), ip=self._client_ip(),
+                     detail=(marca + os.path.basename(dest) + f" · sha256:{digest[:12]}…"), bytes=size)
+        notify_telegram(f"Archivo dejado por enlace en {dep}/{sub}: {os.path.basename(dest)}"
+                        + (f" (por {dropper})" if dropper else ""))
+        # De un solo archivo: el enlace se cierra solo tras esta entrega (además de su caducidad).
+        if link.get("one_shot"):
+            db.revoke_buzon_link(link["id"])
+        self._json({"ok": True})
+
     def _handle_complete(self):
         q = self._query()
         uid = safe_id(q.get("id", [""])[0])
@@ -3310,9 +3563,23 @@ def main():
         print(f"  [init] cuenta admin creada: usuario '{ADMIN_USER}'", flush=True)
 
     ip = get_local_ip()
-    url = f"http://{ip}:{PORT}"
+    scheme = "https" if TLS_ON else "http"
+    url = f"{scheme}://{ip}:{PORT}"
 
     server = ThreadingHTTPServer((BIND, PORT), Handler)
+    # HTTPS directo (sin proxy): si hay cert + clave, se envuelve el socket de escucha en TLS. Es la
+    # vía simple para quitar el "No es seguro" sin montar Caddy; Caddy sigue siendo la opción robusta
+    # para alta carga (aquí el handshake ocurre en el hilo de accept).
+    if TLS_ON:
+        import ssl
+        try:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ctx.load_cert_chain(certfile=TLS_CERT, keyfile=TLS_KEY)
+            server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        except (OSError, ssl.SSLError, ValueError) as e:
+            print(f"  [TLS] no pude cargar el certificado/clave: {e}", flush=True)
+            print("  [TLS] revisa HYLANLOCK_TLS_CERT y HYLANLOCK_TLS_KEY. Arranque cancelado.", flush=True)
+            raise SystemExit(1)
     server.url = url
     # Token de sesión PERSISTENTE: se guarda en disco para que los reinicios del
     # servicio NO cierren la sesión de los usuarios (cookie válida 30 días).
@@ -3363,11 +3630,13 @@ def main():
         else:
             print("  AD/LDAP: LDAPS con validación de certificado", flush=True)
 
+    if TLS_ON:
+        print(f"  HTTPS: certificado propio cargado ({os.path.basename(TLS_CERT)}) · se sirve cifrado", flush=True)
     print_banner(url)
     # Solo abrir navegador en un equipo de escritorio (Windows). En el servidor
     # headless no hay GUI, asi que se omite.
     if os.name == "nt":
-        threading.Timer(0.8, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}/")).start()
+        threading.Timer(0.8, lambda: webbrowser.open(f"{scheme}://127.0.0.1:{PORT}/")).start()
 
     try:
         server.serve_forever()

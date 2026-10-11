@@ -11,6 +11,11 @@ tools/hylanlock_license_private.key
 # publica en el repo (doble protección de la clave). La VERIFICACIÓN sí es pública (app/license.py).
 tools/
 
+# Material de ventas / demo (no es código de producto; el GIF ya está alojado en la web).
+# Si algún día quieres que la demo interactiva sea visible en el repo, quita 'demo/' de aquí.
+gif/
+demo/
+
 # Datos, secretos y temporales generados en tiempo de ejecución
 app/data/
 app/_tdata/
