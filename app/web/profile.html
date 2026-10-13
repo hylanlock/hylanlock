@@ -30,6 +30,15 @@
   </div>
 </div>
 
+<div id="tf-section" style="display:none">
+  <div id="tf-required" class="notice-box" style="display:none;margin-top:16px;border-color:var(--err);color:var(--err)">
+    <b>Tu organización exige la verificación en dos pasos a los administradores.</b>
+    Actívala aquí para poder seguir usando Hylanlock.
+  </div>
+  <h2 class="sec">Verificación en dos pasos (2FA)</h2>
+  <div class="notice-box" id="tf-box"></div>
+</div>
+
 <h2 class="sec">Mis departamentos</h2>
 <div class="plist" id="mine"><div class="empty">Cargando…</div></div>
 
@@ -158,5 +167,85 @@
     } catch (e) { }
     cargaTokens();
   }
-  load(); cargaTokens();
+  // ---- Verificación en dos pasos (2FA, solo administradores) ----
+  let TF = null, TF_SECRET = '';
+  async function tfPost(url, data) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(data || {}) });
+      if (r.status === 403) {
+        const t = await r.text().catch(() => '');
+        if (/step-up|re-auten/i.test(t)) { location.href = '/elevate?next=/perfil'; return { stepup: true }; }
+        return { error: t || 'Sin permiso' };
+      }
+      return await r.json().catch(() => ({ error: 'Error' }));
+    } catch (e) { return { error: 'Error de red' }; }
+  }
+  function tfMsg(t, ok) { const m = document.getElementById('tf-msg'); if (m) { m.textContent = t; m.style.color = ok ? 'var(--ok)' : 'var(--err)'; } }
+  function tfCodes(codes, titulo) {
+    document.getElementById('tf-box').innerHTML = `<b>${titulo}</b>
+      <div class="sub" style="margin-top:6px">Guárdalos en tu gestor de contraseñas o en papel: <b>no se volverán a mostrar</b>.
+        Cada uno sirve <b>una sola vez</b> para entrar si pierdes el móvil.</div>
+      <pre id="tf-codes" style="margin:10px 0;padding:10px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);font-size:.95rem;line-height:1.6">${codes.map(esc).join('\n')}</pre>
+      <div class="genout"><button class="mini" onclick="hylCopiar(document.getElementById('tf-codes').textContent, this)">Copiar</button>
+      <button class="mini" onclick="location.href='/perfil'">Ya los he guardado</button></div>`;
+  }
+  function tfRender() {
+    const box = document.getElementById('tf-box');
+    if (TF.enabled) {
+      box.innerHTML = `<b style="color:var(--ok)">✅ Activada.</b> Al entrar se te pedirá el código de tu app.
+        <div class="sub" style="margin-top:6px">Te quedan <b>${TF.recovery_left}</b> código(s) de recuperación.
+          Para generar códigos nuevos${TF.required ? '' : ' o desactivarla'}, escribe un código actual de tu app:</div>
+        <div class="genout" style="margin-top:8px"><input type="text" id="tf-code" placeholder="Código de 6 cifras" inputmode="numeric" autocomplete="one-time-code">
+          <button class="mini" onclick="tfNuevosCodigos()">Nuevos códigos de recuperación</button>
+          ${TF.required ? '' : '<button class="mini danger" onclick="tfDesactivar()">Desactivar</button>'}</div>
+        <div id="tf-msg" class="sub" style="margin-top:6px"></div>`;
+    } else {
+      box.innerHTML = `Protege tu cuenta de administrador con un <b>código de 6 cifras</b> de una app del móvil
+        (Google Authenticator, Microsoft Authenticator, Aegis…), además de tu contraseña. Así, una contraseña robada no basta.
+        <div class="genout" style="margin-top:10px"><button class="mini" onclick="tfIniciar()">Activar</button></div>
+        <div id="tf-msg" class="sub" style="margin-top:6px"></div>`;
+    }
+  }
+  async function tfIniciar() {
+    const j = await tfPost('/perfil/2fa/iniciar'); if (j.stepup) return;
+    if (!j.ok) return tfMsg(j.error || 'No se pudo iniciar', false);
+    TF_SECRET = j.secret;
+    document.getElementById('tf-box').innerHTML = `<b>1.</b> Escanea este código con tu app de autenticación:
+      <div style="margin:10px 0;background:#fff;display:inline-block;padding:8px;border-radius:10px">${j.qr}</div>
+      <div class="sub">¿No puedes escanear? Añádelo a mano con esta clave:<br>
+        <code style="font-size:.9rem;word-break:break-all">${esc(j.secret.replace(/(.{4})/g, '$1 ').trim())}</code></div>
+      <div style="margin-top:12px"><b>2.</b> Escribe el código de 6 cifras que te muestra la app:</div>
+      <div class="genout" style="margin-top:8px"><input type="text" id="tf-code" placeholder="123456" inputmode="numeric" autocomplete="one-time-code">
+        <button class="mini" onclick="tfActivar()">Confirmar y activar</button>
+        <button class="mini" onclick="tfRender()">Cancelar</button></div>
+      <div id="tf-msg" class="sub" style="margin-top:6px"></div>`;
+  }
+  async function tfActivar() {
+    const code = document.getElementById('tf-code').value;
+    const j = await tfPost('/perfil/2fa/activar', { secret: TF_SECRET, code }); if (j.stepup) return;
+    if (!j.ok) return tfMsg(j.error || 'No se pudo activar', false);
+    document.getElementById('tf-required').style.display = 'none';
+    tfCodes(j.recovery, '✅ Verificación en dos pasos activada. Estos son tus códigos de recuperación:');
+  }
+  async function tfNuevosCodigos() {
+    const j = await tfPost('/perfil/2fa/codigos', { code: document.getElementById('tf-code').value }); if (j.stepup) return;
+    if (!j.ok) return tfMsg(j.error || 'No se pudo', false);
+    tfCodes(j.recovery, 'Tus nuevos códigos de recuperación (los anteriores ya no valen):');
+  }
+  async function tfDesactivar() {
+    if (!confirm('¿Desactivar la verificación en dos pasos? Tu cuenta quedará protegida solo por la contraseña.')) return;
+    const j = await tfPost('/perfil/2fa/desactivar', { code: document.getElementById('tf-code').value }); if (j.stepup) return;
+    if (!j.ok) return tfMsg(j.error || 'No se pudo', false);
+    location.href = '/perfil';
+  }
+  async function loadTwofa() {
+    let p; try { p = await (await fetch('/api/perfil')).json(); } catch (e) { return; }
+    TF = p.twofa || {};
+    if (!TF.available && !TF.enabled) return;
+    document.getElementById('tf-section').style.display = 'block';
+    if (TF.required && !TF.enabled) document.getElementById('tf-required').style.display = 'block';
+    tfRender();
+  }
+  load(); cargaTokens(); loadTwofa();
 </script>

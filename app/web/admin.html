@@ -191,6 +191,22 @@
       <div class="chips" id="edit-deps"></div>
     </div>
     <div class="field">
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="edit-supervisor" style="width:auto" onchange="toggleSupervisor(this)">
+        Supervisor de gobernanza
+      </label>
+      <span class="sub">Ve la estructura de todas las carpetas (tamaños, antigüedad, accesos, actividad) en
+        <b>Gobernanza</b>, sin abrir, descargar ni ver el nombre de ningún archivo. Para el DPO, gerencia o el técnico del MSP.</span>
+    </div>
+    <div class="field">
+      <label>Verificación en dos pasos (2FA)</label>
+      <div class="editrow" style="margin-top:6px;align-items:center">
+        <span id="edit-2fa" class="sub"></span>
+        <button class="mini danger" id="edit-2fa-reset" onclick="resetTwofa()">Quitar 2FA</button>
+      </div>
+      <span class="sub">Si ha perdido el móvil y sus códigos de recuperación. Volverá a entrar solo con su contraseña.</span>
+    </div>
+    <div class="field">
       <label>Contraseña</label>
       <div class="editrow" style="margin-top:6px">
         <button class="mini" onclick="sendReset()">Enviar enlace de restablecimiento</button>
@@ -616,6 +632,9 @@
     document.getElementById('edit-title').textContent = 'Editar · ' + username;
     document.getElementById('edit-username').value = username;
     document.getElementById('edit-role').value = roleOf(u);
+    document.getElementById('edit-supervisor').checked = !!u.supervisor;
+    document.getElementById('edit-2fa').textContent = u.totp ? 'Activada' : 'No configurada';
+    document.getElementById('edit-2fa-reset').style.display = u.totp ? '' : 'none';
     document.getElementById('edit-msg').textContent = '';
     const mine = userDeps(username).map(d => d.slug);
     document.getElementById('edit-deps').innerHTML = DEPTS.length ? DEPTS.map(d => {
@@ -629,6 +648,21 @@
     const r = await post(on ? '/admin/dep/unassign' : '/admin/dep/assign', { username: EDIT, slug, role: 'member' });
     if (r.stepup) return;
     if (r.ok) { await loadData(); editUser(EDIT); } else msg('edit-msg', r.error || 'Error', false);
+  }
+  async function resetTwofa() {
+    if (!confirm('¿Quitar la verificación en dos pasos de ' + EDIT + '? Podrá entrar solo con su contraseña ' +
+        'y volver a activarla en Mi perfil. Queda registrado en la auditoría.')) return;
+    const r = await post('/admin/user/2fa/reset', { username: EDIT });
+    if (r.stepup) return;
+    if (!r.ok) return msg('edit-msg', r.error || 'Error', false);
+    await loadData(); editUser(EDIT); msg('edit-msg', '2FA quitado', true);
+  }
+  async function toggleSupervisor(el) {
+    const r = await post('/admin/user/supervisor', { username: EDIT, on: el.checked ? '1' : '' });
+    if (r.stepup) return;
+    if (!r.ok) { el.checked = !el.checked; return msg('edit-msg', r.error || 'Error', false); }
+    await loadData(); editUser(EDIT);
+    msg('edit-msg', el.checked ? 'Ahora es supervisor de gobernanza' : 'Ya no es supervisor', true);
   }
   function msg(id, text, ok) { const e = document.getElementById(id); e.textContent = text; e.className = 'msg ' + (ok ? 'ok' : 'err'); }
 

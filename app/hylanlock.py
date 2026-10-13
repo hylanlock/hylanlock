@@ -37,6 +37,7 @@ import html
 import qr  # generador de QR local (qr.py)
 import db  # base de datos de auditoría (db.py)
 import license  # verificación de licencia/trial offline (license.py)
+import totp  # códigos de un solo uso por tiempo para el 2FA (totp.py)
 import ldap_auth  # login opcional contra Active Directory / LDAP (ldap_auth.py)
 
 # ============================================================ CONFIGURACION
@@ -83,6 +84,7 @@ _NAV_ICONS = {
                          '<path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>'),
     "user":     _nav_svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
     "shield":   _nav_svg('<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/>'),
+    "eye":      _nav_svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
     "list":     _nav_svg('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
     "cog":      _nav_svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1'
                          'a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.2a1.6 1.6 0'
@@ -304,6 +306,50 @@ def parse_session(secret, value):
         return None
 
 
+# ------------------------------------------------------------- 2FA: paso intermedio del login
+# Tras la contraseña, si la cuenta tiene 2FA, NO se emite la sesión: se emite una cookie corta
+# (5 min, solo para /login/2fa) que dice "esta persona ya acertó la contraseña". Va firmada con el
+# mismo secreto que la sesión, pero con otro prefijo ("2fa|"), así que nunca sirve como sesión.
+TWOFA_PENDING_SECONDS = 300
+TWOFA_POLICY_KEY = "require_2fa_admins"
+
+
+def make_2fa_pending(secret, username, scope, remember):
+    exp = int(time.time()) + TWOFA_PENDING_SECONDS
+    payload = f"2fa|{username}|{scope}|{1 if remember else 0}|{exp}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(f"{payload}|{sig}".encode()).decode()
+
+
+def parse_2fa_pending(secret, value):
+    """(usuario, scope, recordarme) si la cookie intermedia es auténtica y no ha caducado."""
+    try:
+        raw = base64.urlsafe_b64decode((value or "").encode()).decode()
+        tag, username, scope, rem, exp, sig = raw.split("|")
+        payload = f"{tag}|{username}|{scope}|{rem}|{exp}"
+        good = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if tag != "2fa" or not hmac.compare_digest(sig, good) or time.time() > int(exp):
+            return None
+        return username, scope, rem == "1"
+    except Exception:
+        return None
+
+
+def twofa_cookie(value, secure=False):
+    c = f"pr_2fa={value}; Path=/login; SameSite=Strict; HttpOnly; Max-Age={TWOFA_PENDING_SECONDS if value else 0}"
+    return c + ("; Secure" if secure else "")
+
+
+def require_2fa_admins():
+    """Política de la organización: ¿los administradores DEBEN tener 2FA?"""
+    return db.meta_get(TWOFA_POLICY_KEY, "0") == "1"
+
+
+# Lo único que puede hacer un admin sin 2FA cuando la política lo exige: ir a activarlo.
+TWOFA_SETUP_PATHS = {"/perfil", "/api/perfil", "/api/perfil/tokens", "/perfil/2fa/iniciar",
+                     "/perfil/2fa/activar", "/elevate"}
+
+
 def csrf_token(secret, username, tv):
     """Token anti-CSRF ligado a la sesión (usuario + token_version), sin estado en el servidor.
     Cambia si el usuario cierra en todos (sube tv), invalidando tokens viejos."""
@@ -347,6 +393,224 @@ def notify_telegram(text):
         except Exception:
             pass
     threading.Thread(target=_send, daemon=True).start()
+
+
+# ------------------------------------------------------------- Aviso de exposición pública
+# Hylanlock es para la red local. Si alguien abre el puerto en el router (o publica el proxy), los
+# accesos de fuera ya se rechazan con 403, pero el admin no se entera de que está EXPUESTO. Detección
+# PASIVA: si llega una petición desde una IP pública de internet, esa es la prueba. No se consulta
+# ningún servicio externo (nada sale de la red). Se recuerdan hasta EXPO_MAX_IPS IPs durante
+# EXPO_DAYS días en la tabla meta; el admin ve un banner hasta que pulsa "Revisado", y vuelve a
+# salir si aparece una IP NUEVA. Las llamadas a la API con 'remote.access' son remotas a propósito:
+# se listan como informativas y no disparan la alarma.
+EXPO_KEY, EXPO_ACK_KEY = "exposure_ips", "exposure_ack"
+EXPO_MAX_IPS = 50
+EXPO_DAYS = 30
+_expo_lock = threading.Lock()
+_expo_cache = None
+_expo_saved = 0.0
+
+
+def ip_es_publica(ip):
+    """True si la IP es de internet (ni privada, ni loopback, ni link-local, ni CGNAT)."""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if getattr(a, "ipv4_mapped", None):
+        a = a.ipv4_mapped
+    return a.is_global
+
+
+def _expo_load():
+    """Estado en memoria (cargado una vez de meta), sin las IPs de hace más de EXPO_DAYS días."""
+    global _expo_cache
+    if _expo_cache is None:
+        try:
+            _expo_cache = json.loads(db.meta_get(EXPO_KEY, "") or "{}")
+        except (ValueError, TypeError):
+            _expo_cache = {}
+    corte = time.time() - EXPO_DAYS * 86400
+    for ip in [ip for ip, e in _expo_cache.items() if e.get("last", 0) < corte]:
+        del _expo_cache[ip]
+    return _expo_cache
+
+
+def exposure_note(ip, path, legit=False):
+    """Registra una petición llegada desde internet. Barato para la LAN (sale en la 1ª línea)."""
+    global _expo_saved
+    if not ip_es_publica(ip):
+        return
+    now = time.time()
+    with _expo_lock:
+        data = _expo_load()
+        e = data.get(ip)
+        nueva = e is None
+        if nueva:
+            if len(data) >= EXPO_MAX_IPS:
+                del data[min(data, key=lambda k: data[k].get("last", 0))]
+            e = data[ip] = {"first": now, "last": 0, "count": 0, "path": "", "legit": legit}
+        dia_nuevo = time.strftime("%Y-%m-%d", time.localtime(e["last"])) != time.strftime("%Y-%m-%d")
+        e["count"] += 1
+        e["last"] = now
+        e["path"] = path[:120]
+        e["legit"] = e["legit"] and legit      # basta UN acceso no autorizado para que cuente
+        if nueva or dia_nuevo or now - _expo_saved > 60:
+            try:
+                db.meta_set(EXPO_KEY, json.dumps(data))
+                _expo_saved = now
+            except Exception:
+                pass
+    if nueva or dia_nuevo:                      # auditoría: una vez por IP y día, sin inundar
+        db.log_event("public_access", origin="remoto", ip=ip,
+                     detail=("API remota autorizada: " if legit else "") + path[:120])
+    if nueva and not legit:
+        print(f"  [AVISO] conexión desde INTERNET: {ip} -> {path[:80]}. {brand_name()} es para la red "
+              f"local: revisa el router/proxy.", flush=True)
+        notify_telegram(f"⚠️ {brand_name()}: conexión desde internet ({ip} -> {path[:80]}).\n"
+                        "Está pensado para la red local: revisa el router o el proxy.")
+
+
+def exposure_state():
+    """(lista de IPs más recientes primero, nº de IPs NO autorizadas aparecidas tras el último 'Revisado')."""
+    with _expo_lock:
+        data = {ip: dict(e) for ip, e in _expo_load().items()}
+    try:
+        ack = float(db.meta_get(EXPO_ACK_KEY, "0") or 0)
+    except ValueError:
+        ack = 0.0
+    filas = sorted(({"ip": ip, **e} for ip, e in data.items()), key=lambda x: -x["last"])
+    pendientes = sum(1 for f in filas if not f["legit"] and f["first"] > ack)
+    return filas, pendientes
+
+
+def _hace(ts):
+    """'hace 5 min', 'hace 3 h', 'hace 2 d' (para avisos)."""
+    d = max(0, time.time() - (ts or 0))
+    if d < 60:
+        return "hace un momento"
+    if d < 3600:
+        return f"hace {int(d // 60)} min"
+    if d < 86400:
+        return f"hace {int(d // 3600)} h"
+    return f"hace {int(d // 86400)} d"
+
+
+def lan_cidrs_publicas():
+    """Subredes de HYLANLOCK_LAN_CIDR que incluyen IPs de internet (error de configuración grave:
+    haría que internet 'pareciera' red local)."""
+    cgnat = ipaddress.ip_network("100.64.0.0/10")
+    return [str(n) for n in _LAN_NETS
+            if not (n.is_private or n.is_loopback or n.is_link_local
+                    or (n.version == 4 and n.subnet_of(cgnat)))]
+
+
+# ------------------------------------------------------------- Gobernanza (gestionar sin leer)
+# El explorador de gobernanza enseña a quien tenga 'folder.oversee' (admins y rol Supervisor) la
+# estructura de TODAS las carpetas: tamaños, antigüedad, quién tiene acceso, actividad, duplicados.
+# Nunca el contenido ni el NOMBRE de un archivo ('despido-juan.pdf' ya es un dato personal): los
+# nombres solo se usan aquí, en el servidor, para cruzarlos con la auditoría, y no salen de esta
+# función. Cada archivo se identifica por su tipo, tamaño, fecha y huella SHA-256 corta.
+GOV_STALE_DAYS = 90      # carpeta "sin movimiento" si no hay archivos nuevos ni actividad en N días
+GOV_OLD_DAYS = 365       # archivo "antiguo"
+GOV_MAX_FILES = 500      # filas de detalle por carpeta (los totales cuentan todo)
+
+
+def _gov_ts(s):
+    """'YYYY-MM-DD HH:MM:SS' (hora local de la auditoría) -> epoch. None si no se puede."""
+    try:
+        return time.mktime(time.strptime(s, "%Y-%m-%d %H:%M:%S"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _gov_hash(path):
+    """Huella SHA-256 guardada al subir (sidecar). No se recalcula: leer GB de disco por una vista no."""
+    try:
+        with open(path + SHA_EXT, encoding="utf-8") as f:
+            h = f.read(64)
+        return h if len(h) == 64 and all(ch in "0123456789abcdef" for ch in h) else None
+    except OSError:
+        return None
+
+
+def _gov_folder(path, tag, activity, files_meta, now):
+    filas = []
+    try:
+        nombres = os.listdir(path)
+    except OSError:
+        nombres = []
+    for name in nombres:
+        if name.endswith(SHA_EXT):
+            continue
+        p = os.path.join(path, name)
+        try:
+            if not os.path.isfile(p):
+                continue                      # las subcarpetas se listan aparte
+            st = os.stat(p)
+        except OSError:
+            continue
+        meta = files_meta.get((tag, name), {})
+        filas.append({"ext": (os.path.splitext(name)[1].lower().lstrip(".")[:10] or ""),
+                      "size": st.st_size, "mtime": st.st_mtime, "by": meta.get("by"),
+                      "downloads": meta.get("downloads", 0), "hash": _gov_hash(p)})
+    filas.sort(key=lambda f: -f["mtime"])
+    act = activity.get(tag)
+    last = {"ts": _gov_ts(act["ts"]), "type": act["type"], "user": act["user"]} if act else None
+    newest = max((f["mtime"] for f in filas), default=None)
+    movimiento = max([t for t in (newest, last and last["ts"]) if t] or [0])
+    return {"count": len(filas), "size": sum(f["size"] for f in filas),
+            "newest": newest, "oldest": min((f["mtime"] for f in filas), default=None),
+            "old_files": sum(1 for f in filas if f["mtime"] < now - GOV_OLD_DAYS * 86400),
+            "stale": bool(filas) and movimiento < now - GOV_STALE_DAYS * 86400,
+            "last": last, "files": filas[:GOV_MAX_FILES], "_all": filas}
+
+
+def governance_snapshot():
+    """Foto de gobernanza de todas las carpetas, SIN nombres de archivo."""
+    now = time.time()
+    activity, files_meta = db.folder_activity()
+    usuarios = db.list_users()
+    globales = sorted(u["username"] for u in usuarios
+                      if u["scope"] == "admin" or (u["boss"] and u["scope"] != "service"))
+    supervisores = sorted(u["username"] for u in usuarios if u.get("supervisor"))
+    deps, todas = [], []
+    for d in db.list_departments():
+        slug = d["slug"]
+        dep = _gov_folder(dep_dir(slug), db.folder_tag(slug), activity, files_meta, now)
+        dep.update({"name": d["name"], "slug": slug, "access": db.department_members(slug), "subs": []})
+        todas.append(dep)
+        for s in db.list_subfolders(slug):
+            sub = _gov_folder(sub_dir(slug, s["slug"]), db.folder_tag(slug, s["slug"]),
+                              activity, files_meta, now)
+            sub.update({"name": s["name"], "slug": s["slug"], "access": db.subfolder_acl(slug, s["slug"]),
+                        "buzones": len(db.list_buzon_links(slug, s["slug"]))})
+            dep["subs"].append(sub)
+            todas.append(sub)
+        deps.append(dep)
+    # Duplicados: mismo contenido (misma huella) guardado en más de un sitio.
+    por_hash = {}
+    for carpeta in todas:
+        for f in carpeta["_all"]:
+            if f["hash"]:
+                por_hash.setdefault(f["hash"], []).append(f["size"])
+    copias = [sizes for sizes in por_hash.values() if len(sizes) > 1]
+    dups = {h for h, sizes in por_hash.items() if len(sizes) > 1}
+    for carpeta in todas:
+        for f in carpeta["files"]:
+            f["dup"] = f["hash"] in dups
+            f["hash"] = f["hash"][:12] if f["hash"] else None
+        del carpeta["_all"]
+    kpi = {"deps": len(deps), "subs": len(todas) - len(deps),
+           "files": sum(c["count"] for c in todas), "size": sum(c["size"] for c in todas),
+           "empty": sum(1 for c in todas if not c["count"]),
+           "stale": sum(1 for c in todas if c["stale"]),
+           "old_files": sum(c["old_files"] for c in todas),
+           "dup_copies": sum(len(s) - 1 for s in copias),
+           "dup_bytes": sum(sum(s) - s[0] for s in copias)}
+    return {"generated": now, "stale_days": GOV_STALE_DAYS, "old_days": GOV_OLD_DAYS,
+            "max_files": GOV_MAX_FILES, "kpi": kpi, "global_access": globales,
+            "supervisors": supervisores, "deps": deps}
 
 
 def _origin_label(origin):
@@ -911,6 +1175,7 @@ def _template(name):
 CSS            = "styles.css"
 LAYOUT_PAGE    = "layout.html"      # shell compartido (sidebar + área de contenido)
 PROFILE_PAGE   = "profile.html"     # perfil del usuario: sus permisos + solicitar acceso
+GOBERNANZA_PAGE = "gobernanza.html"  # explorador de gobernanza (gestionar sin leer)
 AJUSTES_PAGE   = "ajustes.html"     # configuración general: tema, idioma, plan, acerca de
 LOGIN_PAGE     = "login.html"
 WELCOME_PAGE   = "welcome.html"     # home: pantalla de bienvenida
@@ -924,6 +1189,7 @@ DEPTS_PAGE     = "departamentos.html"
 ADMIN_PAGE     = "admin.html"
 LOG_PAGE       = "log.html"
 STEPUP_PAGE    = "elevate.html"
+TWOFA_PAGE     = "twofa.html"       # segundo paso del login (código del móvil)
 
 
 # Interruptor de tema claro/oscuro, inyectado en todas las páginas.
@@ -1079,6 +1345,12 @@ def render(page, url="", qr_svg="", err="", pwpill="", depts="", slug="", depnam
                 .replace("__DEPNAME__", html.escape(depname))
                 .replace("__NEXT__", html.escape(nxt))
     ).encode("utf-8")
+
+
+def render_twofa(err=""):
+    """Pantalla del segundo paso del login (código TOTP o de recuperación)."""
+    return _inject_theme(_template(TWOFA_PAGE).replace("__CSS__", _template(CSS))
+                         .replace("__ERR__", err)).encode("utf-8")
 
 
 def render_activate(username="", token="", err="", formcls=""):
@@ -1334,6 +1606,7 @@ _GUARD_GET = {
     "/api/log":                {"perm": "audit.view"},
     "/upload/status":          {},   # solo autenticado
     "/ajustes":                {},   # Ajustes: autenticado (el bloque de admin se decide dentro)
+    "/gobernanza":             {"lan": True, "perm": "folder.oversee"},   # ver estructura SIN leer
 }
 _GUARD_POST = {
     "/upload/chunk":           {},
@@ -1353,6 +1626,8 @@ _GUARD_POST = {
     "/admin/invite":           {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/config/extensiones": {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/config/marca":      {"lan": True, "perm": "users.manage", "elevated": True},
+    "/admin/exposicion/revisado": {"lan": True, "perm": "users.manage"},   # solo oculta el aviso
+    "/admin/user/supervisor":  {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/licencia":         {"lan": True, "perm": "users.manage"},
     "/perfil/solicitar":       {"lan": True},
     # Despachar avisos sin abrir la carpeta. No hace falta step-up: no concede acceso ni borra
@@ -1361,6 +1636,13 @@ _GUARD_POST = {
     # Tokens de dispositivo: el usuario gestiona los suyos. Step-up porque crear una credencial
     # de larga duración es una acción sensible.
     "/perfil/token/new":       {"lan": True, "elevated": True},
+    # 2FA: activarlo es para administradores; desactivarlo o renovar códigos, para quien lo tenga.
+    "/perfil/2fa/iniciar":     {"lan": True, "perm": "users.manage", "elevated": True},
+    "/perfil/2fa/activar":     {"lan": True, "perm": "users.manage", "elevated": True},
+    "/perfil/2fa/desactivar":  {"lan": True, "elevated": True},
+    "/perfil/2fa/codigos":     {"lan": True, "elevated": True},
+    "/admin/user/2fa/reset":   {"lan": True, "perm": "users.manage", "elevated": True},
+    "/admin/config/2fa":       {"lan": True, "perm": "users.manage", "elevated": True},
     "/perfil/token/revoke":    {"lan": True},
     "/admin/request/resolve":  {"lan": True, "perm": "depts.manage", "elevated": True},
     # Subcarpetas y su ACL: misma protección que gestionar departamentos.
@@ -1585,6 +1867,29 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return db.verify_device_token(auth[7:].strip())
 
+    def _cookie_value(self, name):
+        for part in self.headers.get("Cookie", "").split(";"):
+            part = part.strip()
+            if part.startswith(name + "="):
+                return part[len(name) + 1:]
+        return ""
+
+    def _finish_login(self, username, scope, remember, ip, detail=None, clear_2fa=False):
+        """Emite la sesión y entra (tras la contraseña, y tras el código si hay 2FA)."""
+        clear_login_fails(ip)
+        db.log_event("login_ok", user=username, origin=self._origin(), ip=ip, detail=detail)
+        tv = (db.get_user(username) or {}).get("token_version", 1)
+        elev = int(time.time()) + STEPUP_MINUTES * 60   # login = elevación inicial
+        value = make_session(self.server.session_token, username, scope, tv, elev, 1 if remember else 0)
+        extra = [("Location", "/"), ("Set-Cookie", session_cookie(value, remember, secure=self._tls()))]
+        if clear_2fa:
+            extra.append(("Set-Cookie", twofa_cookie("", self._tls())))
+        # Todos aterrizan en la home de bienvenida (guía rápida). Desde ahí, a departamentos.
+        self._send(302, extra=extra)
+        if self._origin() == "remoto":
+            notify_telegram(f"Acceso remoto desde Internet\n"
+                            f"Usuario: {username}\nHora: {time.strftime('%H:%M')}")
+
     def _cookie_user(self):
         """(usuario, scope) de una sesión de COOKIE válida y vigente, o None. Solo cookie.
         Además de la firma HMAC, valida contra la BD: el usuario existe, está ACTIVO y su
@@ -1673,8 +1978,11 @@ class Handler(BaseHTTPRequestHandler):
         available = ([] if global_access else
                      [{"slug": d["slug"], "name": d["name"]} for d in db.list_departments()
                       if d["slug"] not in mine_slugs])
+        admin = self._is_admin()
         return {"username": me, "role": rol, "mine": mine, "available": available,
-                "pending": db.user_pending_requests(me), "global_access": global_access}
+                "pending": db.user_pending_requests(me), "global_access": global_access,
+                "twofa": {**db.totp_status(me), "available": admin,
+                          "required": admin and require_2fa_admins()}}
 
     def _render_blocked(self):
         st = self._license()
@@ -1910,6 +2218,8 @@ class Handler(BaseHTTPRequestHandler):
         admin = []
         if self._is_admin():                       # users.manage (it_admin)
             admin.append(link("/admin", _NAV_ICONS["shield"], "Administración"))
+        if self._has("folder.oversee"):            # admins y rol Supervisor
+            admin.append(link("/gobernanza", _NAV_ICONS["eye"], "Gobernanza"))
         if self._has("audit.view"):
             admin.append(link("/log", _NAV_ICONS["list"], "Registro"))
         if admin:
@@ -1932,6 +2242,84 @@ class Handler(BaseHTTPRequestHandler):
                 'background:color-mix(in srgb, var(--warn) 14%, transparent);'
                 'border:1px solid color-mix(in srgb, var(--warn) 40%, transparent);color:var(--warn)">'
                 f'Tu licencia caduca {cuando}.{accion}</div>')
+
+    def _exposure_banner(self):
+        """Banner rojo para administradores si llegan conexiones desde internet sin revisar."""
+        if not self._is_admin():
+            return ""
+        filas, pendientes = exposure_state()
+        if not pendientes:
+            return ""
+        ultima = max(f["last"] for f in filas if not f["legit"])
+        return ('<div id="expo-banner" style="margin:0 0 16px;padding:12px 14px;border-radius:12px;font-size:.88rem;'
+                'background:color-mix(in srgb, var(--err) 12%, transparent);'
+                'border:1px solid color-mix(in srgb, var(--err) 45%, transparent);color:var(--err)">'
+                f'<b>⚠️ {html.escape(brand_name())} está recibiendo conexiones desde internet</b> '
+                f'({pendientes} IP{"s" if pendientes != 1 else ""} nueva{"s" if pendientes != 1 else ""}, '
+                f'la última {_hace(ultima)}). Está pensado para la red local: revisa si hay un puerto abierto '
+                'en el router o un proxy publicado. '
+                '<a href="/ajustes#exposicion" style="color:inherit;font-weight:700">Ver detalle</a> · '
+                '<a href="#" style="color:inherit" onclick="fetch(\'/admin/exposicion/revisado\',{method:\'POST\'})'
+                '.then(function(){var b=document.getElementById(\'expo-banner\');if(b)b.remove()});return false">'
+                'Revisado</a></div>')
+
+    def _exposure_card(self):
+        """Tarjeta de Ajustes: estado de exposición a internet y lista de IPs vistas."""
+        filas, pendientes = exposure_state()
+        malas = [f for f in filas if not f["legit"]]
+        aviso_cidr = ""
+        if lan_cidrs_publicas():
+            aviso_cidr = ('<div class="dsc" style="color:var(--err);margin-top:8px"><b>Configuración peligrosa:</b> '
+                          f'HYLANLOCK_LAN_CIDR incluye IPs de internet ({html.escape(", ".join(lan_cidrs_publicas()))}), '
+                          'así que internet cuenta como "red local". Acótalo a tus subredes privadas.</div>')
+        if not filas:
+            estado = ('<div class="dsc" style="color:var(--ok);margin-top:8px">✅ No se ha detectado ningún acceso '
+                      f'desde internet en los últimos {EXPO_DAYS} días.</div>')
+        else:
+            estado = ('<div class="dsc" style="margin-top:8px">'
+                      + (f'<b style="color:var(--err)">Se han recibido conexiones desde {len(malas)} IP(s) de internet.</b> '
+                         'Hylanlock las rechaza, pero que lleguen significa que está expuesto: cierra el puerto en el '
+                         'router o el proxy.' if malas else
+                         'Solo hay accesos remotos <b>autorizados</b> a la API (cuentas con acceso remoto).')
+                      + '</div>')
+            filas_html = "".join(
+                f'<tr><td style="font-family:monospace">{html.escape(f["ip"])}</td>'
+                f'<td>{"API remota autorizada" if f["legit"] else "<b>no autorizado</b>"}</td>'
+                f'<td>{_hace(f["first"])}</td><td>{_hace(f["last"])}</td><td>{int(f["count"])}</td>'
+                f'<td style="font-family:monospace;word-break:break-all">{html.escape(f["path"])}</td></tr>'
+                for f in filas)
+            estado += ('<div style="overflow-x:auto;margin-top:10px"><table style="width:100%;font-size:.82rem;'
+                       'border-collapse:collapse"><thead><tr style="text-align:left;color:var(--muted)">'
+                       '<th>IP</th><th>Tipo</th><th>Primera vez</th><th>Última</th><th>Peticiones</th>'
+                       f'<th>Última ruta</th></tr></thead><tbody>{filas_html}</tbody></table></div>')
+            if pendientes:
+                estado += ('<button class="mini" style="margin-top:10px" onclick="fetch(\'/admin/exposicion/revisado\','
+                           '{method:\'POST\'}).then(function(){location.reload()})">Marcar como revisado</button>')
+        return ('<h2 class="sec" id="exposicion">Exposición a internet</h2>'
+                '<div class="aj-card"><div class="ttl">¿Se puede llegar a este Hylanlock desde fuera?</div>'
+                '<div class="dsc">Se detecta de forma pasiva, sin consultar ningún servicio externo: si llega una '
+                'petición desde una IP pública, está expuesto. Detrás de un proxy (Caddy), configura '
+                'HYLANLOCK_TRUSTED_PROXIES para que se vea la IP real.</div>'
+                f'{aviso_cidr}{estado}</div>')
+
+    def _twofa_card(self):
+        """Ajustes: política de 2FA para administradores y quién lo tiene ya."""
+        admins = [u for u in db.list_users() if u["scope"] == "admin"]
+        con = [u["username"] for u in admins if u.get("totp")]
+        sin = [u["username"] for u in admins if not u.get("totp")]
+        on = require_2fa_admins()
+        estado = (f'<b>{len(con)} de {len(admins)}</b> administradores lo tienen activado'
+                  + (f' · sin 2FA: {html.escape(", ".join(sin))}' if sin else ' ✅'))
+        return ('<h2 class="sec">Verificación en dos pasos (2FA)</h2>'
+                '<div class="aj-card"><div class="ttl">Exigir 2FA a los administradores</div>'
+                '<div class="dsc">Además de la contraseña, un código de 6 cifras de una app del móvil (Google '
+                'Authenticator, Microsoft Authenticator, Aegis…). Cada administrador lo activa en <b>Mi perfil</b>. '
+                'Si lo exiges, quien no lo tenga deberá configurarlo al entrar.</div>'
+                '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;cursor:pointer;font-size:.9rem">'
+                f'<input type="checkbox" id="tf-policy" style="width:auto" {"checked" if on else ""} '
+                'onchange="saveTwofa(this)"> Exigir 2FA a todos los administradores</label>'
+                f'<div class="dsc" style="margin-top:8px">{estado}.</div>'
+                '<span id="tf-msg" class="dsc"></span></div>')
 
     def _ajustes_admin_block(self):
         """Secciones de Ajustes SOLO para administradores: plan/licencia y seguridad. Para un
@@ -1998,7 +2386,7 @@ class Handler(BaseHTTPRequestHandler):
         proximamente = ('<div class="softnote">Próximamente aquí: política de contraseñas y avisos.</div>')
         header = ('<div class="aj-group" style="margin-top:30px">Ajustes de la organización'
                   '<span> · solo administradores, afectan a toda la empresa</span></div>')
-        return header + plan + marca + seguridad + proximamente
+        return header + plan + self._exposure_card() + self._twofa_card() + marca + seguridad + proximamente
 
     def _shell(self, content_page, active, title, **markers):
         """Envuelve el fragmento 'content_page' con el shell (sidebar + contenido). El fragmento
@@ -2007,7 +2395,7 @@ class Handler(BaseHTTPRequestHandler):
         admin = self._is_admin()
         role = "Administrador · acceso total" if admin else "Miembro · red local"
         avatar = "" if admin else ""
-        frag = self._license_banner() + _template(content_page)
+        frag = self._license_banner() + self._exposure_banner() + _template(content_page)
         for k, v in markers.items():
             frag = frag.replace(k, v)
         doc = (_template(LAYOUT_PAGE)
@@ -2070,6 +2458,8 @@ class Handler(BaseHTTPRequestHandler):
         denegación y devuelve False. Todas las rutas no públicas pasan por aquí."""
         # 1) Autenticación (toda ruta que llega aquí la exige).
         if not self._authed():
+            if path.startswith(API_PREFIX):
+                exposure_note(self._client_ip(), path)
             if method == "POST":
                 self._read_body()                      # drenar el cuerpo para no romper keep-alive
                 self._send(401, b"Auth", "text/plain; charset=utf-8")
@@ -2077,6 +2467,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(401, b"Auth", "text/plain; charset=utf-8")
             else:
                 self._send(302, extra=[("Location", "/login")])
+            return False
+        # 1a) Política "2FA obligatorio para administradores": un admin que entra por cookie y aún
+        # no lo tiene configurado solo puede ir a Mi perfil a activarlo (o cerrar sesión).
+        if (path not in TWOFA_SETUP_PATHS and require_2fa_admins() and self._cookie_user()
+                and self._is_admin() and not db.totp_status(self._username())["enabled"]):
+            if method == "POST":
+                self._read_body()
+            if method == "POST" or path.startswith("/api") or path.startswith("/upload"):
+                self._send(403, "Tu organización exige la verificación en dos pasos: actívala en "
+                                "Mi perfil.".encode("utf-8"), "text/plain; charset=utf-8")
+            else:
+                self._send(302, extra=[("Location", "/perfil?2fa=obligatorio")])
             return False
         # 1a-bis) Rate-limit de la API pública. Va aquí, en el chokepoint, para que valga igual
         # para todos los endpoints /api/v1 sin tener que acordarse en cada handler.
@@ -2149,6 +2551,8 @@ class Handler(BaseHTTPRequestHandler):
             # propósito: la aplicación web sigue siendo estrictamente solo-LAN para todos,
             # incluido el administrador. Ampliarlo a la web cambiaría la promesa del producto.
             remoto_ok = path.startswith(API_PREFIX) and self._has("remote.access")
+            if path.startswith(API_PREFIX):
+                exposure_note(self._client_ip(), path, legit=remoto_ok)
             if not remoto_ok:
                 if method == "POST":
                     self._read_body()
@@ -2196,6 +2600,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self._body_cache = None
         path = urlparse(self.path).path
+        if not path.startswith(API_PREFIX):
+            exposure_note(self._client_ip(), path)
 
         # Sonda de salud (Docker/monitorización): SIEMPRE 200 mientras el proceso sirva, sin importar
         # licencia, configuración o red. No expone datos.
@@ -2242,6 +2648,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(302, extra=[("Location", "/")])
             else:
                 self._send(200, render(LOGIN_PAGE, err=""))
+            return
+
+        if path == "/login/2fa":
+            if parse_2fa_pending(self.server.session_token, self._cookie_value("pr_2fa")):
+                self._send(200, render_twofa())
+            else:
+                self._send(302, extra=[("Location", "/login")])
             return
 
         if path == "/logout":
@@ -2297,6 +2710,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, self._shell(DEPTS_PAGE, "/departamentos", "Departamentos"))
         elif path == "/perfil":
             self._send(200, self._shell(PROFILE_PAGE, "/perfil", "Mi perfil"))
+        elif path == "/gobernanza":
+            # '</' escapado: el JSON va dentro de un <script> y un nombre de carpeta con "</script>"
+            # no debe poder cerrarlo.
+            datos = json.dumps(governance_snapshot(), ensure_ascii=False).replace("</", "<\\/")
+            self._send(200, self._shell(GOBERNANZA_PAGE, "/gobernanza", "Gobernanza", __GOVDATA__=datos))
         elif path == "/ajustes":
             self._send(200, self._shell(AJUSTES_PAGE, "/ajustes", "Ajustes",
                                         __VERSION__=html.escape(APP_VERSION),
@@ -2483,6 +2901,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._body_cache = None
         path = urlparse(self.path).path
+        if not path.startswith(API_PREFIX):
+            exposure_note(self._client_ip(), path)
 
         # Primer arranque: el asistente crea el administrador (y opcionalmente instala la licencia).
         if not self._configured():
@@ -2535,19 +2955,13 @@ class Handler(BaseHTTPRequestHandler):
             if scope and not self._is_lan() and not db.has_permission(username, "remote.access"):
                 scope = None
                 deny = "usuario sin acceso remoto desde fuera"
-            if scope:
-                clear_login_fails(ip)
-                db.log_event("login_ok", user=username, origin=self._origin(), ip=ip)
-                tv = (db.get_user(username) or {}).get("token_version", 1)
-                elev = int(time.time()) + STEPUP_MINUTES * 60   # login = elevación inicial
-                value = make_session(self.server.session_token, username, scope, tv, elev,
-                                     1 if remember else 0)
-                cookie = session_cookie(value, remember, secure=self._tls())
-                # Todos aterrizan en la home de bienvenida (guía rápida). Desde ahí, a departamentos.
-                self._send(302, extra=[("Location", "/"), ("Set-Cookie", cookie)])
-                if self._origin() == "remoto":
-                    notify_telegram(f"Acceso remoto desde Internet\n"
-                                    f"Usuario: {username}\nHora: {time.strftime('%H:%M')}")
+            if scope and db.totp_status(username)["enabled"]:
+                # Contraseña correcta, pero la cuenta tiene 2FA: aún NO hay sesión. Los fallos de
+                # la IP no se limpian hasta que acierte también el código.
+                pend = make_2fa_pending(self.server.session_token, username, scope, remember)
+                self._send(200, render_twofa(), extra=[("Set-Cookie", twofa_cookie(pend, self._tls()))])
+            elif scope:
+                self._finish_login(username, scope, remember, ip)
             else:
                 n = record_login_fail(ip)
                 db.log_event("login_fail", user=username or None,
@@ -2565,6 +2979,40 @@ class Handler(BaseHTTPRequestHandler):
                        if deny else "Usuario o contraseña incorrectos")
                 err = f'<div class="err-msg">{msg}</div>'
                 self._send(200, render(LOGIN_PAGE, err=err))
+            return
+
+        if path == "/login/2fa":
+            # Segundo paso del login. Solo vale con la cookie intermedia (contraseña ya acertada).
+            ip = self._client_ip()
+            data = parse_qs(self._read_body().decode("utf-8", "replace"))
+            pend = parse_2fa_pending(self.server.session_token, self._cookie_value("pr_2fa"))
+            if not pend:
+                self._send(302, extra=[("Location", "/login")])
+                return
+            username, scope, remember = pend
+            if login_blocked(ip):
+                self._send(429, render_twofa('<div class="err-msg">Demasiados intentos fallidos. '
+                                             'Espera unos minutos e inténtalo de nuevo.</div>'))
+                return
+            res = db.totp_check(username, data.get("code", [""])[0])
+            if res:
+                detalle = "2FA"
+                if res == "recovery":
+                    quedan = db.totp_status(username)["recovery_left"]
+                    detalle = f"2FA con código de recuperación (quedan {quedan})"
+                    notify_telegram(f"SEGURIDAD: {username} ha entrado con un código de recuperación "
+                                    f"del 2FA (le quedan {quedan}).\nHora: {time.strftime('%H:%M')}")
+                self._finish_login(username, scope, remember, ip, detail=detalle, clear_2fa=True)
+            else:
+                n = record_login_fail(ip)
+                db.log_event("login_fail", user=username, origin=self._origin(), ip=ip,
+                             detail=f"código 2FA incorrecto (intento {n})")
+                if n >= LOGIN_MAX_FAILS:
+                    db.log_event("brute_block", origin=self._origin(), ip=ip)
+                    notify_telegram(f"SEGURIDAD: bloqueo por fuerza bruta (2FA)\n"
+                                    f"IP: {ip}\nHora: {time.strftime('%H:%M')}")
+                time.sleep(min(n, 5) * 0.4)
+                self._send(200, render_twofa('<div class="err-msg">Código incorrecto o ya usado</div>'))
             return
 
         if path == "/activar":
@@ -2648,6 +3096,13 @@ class Handler(BaseHTTPRequestHandler):
             db.log_event("config_blocked_ext", user=me, origin=self._origin(),
                          ip=self._client_ip(), detail=f"{len(guardadas)} extensiones bloqueadas")
             self._json({"ok": True, "blocked_ext": sorted(guardadas)})
+        elif path == "/admin/exposicion/revisado":
+            self._read_body()
+            me = (self._current_user() or (None,))[0]
+            db.meta_set(EXPO_ACK_KEY, str(time.time()))
+            db.log_event("exposure_ack", user=me, origin=self._origin(), ip=self._client_ip(),
+                         detail=f"{len(exposure_state()[0])} IP(s) de internet revisadas")
+            self._json({"ok": True})
         elif path == "/admin/config/marca":
             d = parse_qs(self._read_body().decode("utf-8", "replace"))
             me = (self._current_user() or (None,))[0]
@@ -2773,6 +3228,17 @@ class Handler(BaseHTTPRequestHandler):
                 db.set_user_role(uname, role)
                 db.log_event("user_role", user=me, origin=self._origin(),
                              ip=self._client_ip(), detail=f"{uname} → {role}")
+                self._json({"ok": True})
+        elif path == "/admin/user/supervisor":
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = (self._current_user() or (None,))[0]
+            uname = d.get("username", [""])[0]
+            on = d.get("on", [""])[0] in ("1", "on", "true")
+            if not db.set_supervisor(uname, on):
+                self._json({"error": "Usuario no encontrado"}, 404)
+            else:
+                db.log_event("user_supervisor", user=me, origin=self._origin(), ip=self._client_ip(),
+                             detail=f"{uname} → {'supervisor' if on else 'sin supervisor'}")
                 self._json({"ok": True})
         elif path == "/admin/invite":
             d = parse_qs(self._read_body().decode("utf-8", "replace"))
@@ -2934,6 +3400,68 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": True})
                 else:
                     self._json({"error": "Enlace no encontrado"}, 404)
+        elif path == "/perfil/2fa/iniciar":
+            # Genera un secreto NUEVO y lo devuelve (QR + texto). No se guarda hasta que el admin
+            # demuestra con un código que su app lo ha leído bien (/perfil/2fa/activar).
+            self._read_body()
+            me = self._username()
+            sec = totp.new_secret()
+            uri = totp.uri(sec, me, brand_name())
+            self._json({"ok": True, "secret": sec, "qr": self._qr_svg(uri)})
+        elif path == "/perfil/2fa/activar":
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = self._username()
+            sec = d.get("secret", [""])[0].strip().upper()
+            if db.totp_status(me)["enabled"]:
+                self._json({"error": "La verificación en dos pasos ya está activada."}, 409)
+            elif not totp.valid_secret(sec):
+                self._json({"error": "Secreto no válido. Vuelve a empezar."}, 400)
+            else:
+                counter = totp.verify(sec, d.get("code", [""])[0])
+                if counter is None:
+                    self._json({"error": "El código no coincide. Comprueba que la hora del móvil es "
+                                         "automática y prueba con el código nuevo."}, 400)
+                else:
+                    codes = db.totp_enable(me, sec, counter)
+                    db.log_event("2fa_enabled", user=me, origin=self._origin(), ip=self._client_ip())
+                    self._json({"ok": True, "recovery": codes})
+        elif path in ("/perfil/2fa/desactivar", "/perfil/2fa/codigos"):
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = self._username()
+            if path == "/perfil/2fa/desactivar" and require_2fa_admins() and self._is_admin():
+                self._json({"error": "Tu organización exige la verificación en dos pasos a los "
+                                     "administradores: no se puede desactivar."}, 409)
+            elif not db.totp_check(me, d.get("code", [""])[0]):
+                self._json({"error": "Código incorrecto o ya usado."}, 400)
+            elif path == "/perfil/2fa/desactivar":
+                db.totp_disable(me)
+                db.log_event("2fa_disabled", user=me, origin=self._origin(), ip=self._client_ip())
+                notify_telegram(f"SEGURIDAD: {me} ha desactivado su verificación en dos pasos.\n"
+                                f"Hora: {time.strftime('%H:%M')}")
+                self._json({"ok": True})
+            else:
+                codes = db.totp_regen_recovery(me)
+                db.log_event("2fa_recovery_new", user=me, origin=self._origin(), ip=self._client_ip())
+                self._json({"ok": True, "recovery": codes})
+        elif path == "/admin/user/2fa/reset":
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = (self._current_user() or (None,))[0]
+            uname = d.get("username", [""])[0]
+            if not db.totp_disable(uname):
+                self._json({"error": "Ese usuario no tiene la verificación en dos pasos activada."}, 404)
+            else:
+                db.log_event("2fa_reset", user=me, origin=self._origin(), ip=self._client_ip(), detail=uname)
+                notify_telegram(f"SEGURIDAD: {me} ha quitado la verificación en dos pasos de {uname}.\n"
+                                f"Hora: {time.strftime('%H:%M')}")
+                self._json({"ok": True})
+        elif path == "/admin/config/2fa":
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = (self._current_user() or (None,))[0]
+            on = d.get("on", [""])[0] in ("1", "on", "true")
+            db.meta_set(TWOFA_POLICY_KEY, "1" if on else "0")
+            db.log_event("config_2fa", user=me, origin=self._origin(), ip=self._client_ip(),
+                         detail="2FA obligatorio para administradores: " + ("sí" if on else "no"))
+            self._json({"ok": True, "on": on})
         elif path in ("/perfil/token/new", "/perfil/token/revoke"):
             d = parse_qs(self._read_body().decode("utf-8", "replace"))
             me = self._username()
@@ -3611,6 +4139,9 @@ def print_banner(url):
         print(f"  Servicio disponible en:  {G}{url}{R}")
     print(f"  {D}Organización: {ORG_NAME}{R}")
     print(f"  {D}Acceso restringido a la red local: {', '.join(LAN_CIDRS)}{R}")
+    if lan_cidrs_publicas():
+        print(f"  [31m[AVISO] HYLANLOCK_LAN_CIDR incluye IPs de INTERNET ({', '.join(lan_cidrs_publicas())}): "
+              f"internet contaría como red local. Acótalo a tus subredes privadas.{R}")
     try:
         _bext = blocked_ext_set()
     except Exception:

@@ -92,6 +92,22 @@ __ADMINBLOCK__
     } catch (e) { msg.style.color = 'var(--err)'; msg.textContent = 'Error de red.'; }
   }
 
+  // Política de 2FA para administradores (solo admin; el checkbox solo existe si el servidor lo pintó).
+  async function saveTwofa(el) {
+    const msg = document.getElementById('tf-msg'); if (!msg) return;
+    if (el.checked && !confirm('Los administradores que no tengan la verificación en dos pasos tendrán que configurarla ' +
+        'al entrar (incluido tú, si aún no la tienes). ¿Continuar?')) { el.checked = false; return; }
+    msg.style.color = 'var(--muted)'; msg.textContent = 'Guardando…';
+    try {
+      const r = await fetch('/admin/config/2fa', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ on: el.checked ? '1' : '' }) });
+      if (r.status === 403) { const t = await r.text().catch(() => ''); if (/step-up|re-auten/i.test(t)) { location.href = '/elevate?next=/ajustes'; return; } }
+      const j = await r.json().catch(() => ({}));
+      if (j.ok) { msg.style.color = 'var(--ok)'; msg.textContent = j.on ? 'Guardado · 2FA obligatorio para administradores' : 'Guardado · 2FA opcional'; if (j.on) setTimeout(() => location.reload(), 700); }
+      else { el.checked = !el.checked; msg.style.color = 'var(--err)'; msg.textContent = j.error || 'No se pudo guardar'; }
+    } catch (e) { el.checked = !el.checked; msg.style.color = 'var(--err)'; msg.textContent = 'Error de red'; }
+  }
+
   // ── Extensiones bloqueadas (solo admin; los elementos solo existen si el servidor los pintó) ──
   let EXT_CFG = { blocked_ext: [] };
   const EXT_GROUPS = [

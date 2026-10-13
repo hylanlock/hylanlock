@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylanlock · Verificación en dos pasos</title>
+  <style>
+    __CSS__
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+      <div>
+        <h1>Verificación en dos pasos</h1>
+        <div class="sub">Escribe el código de 6 cifras de tu app de autenticación</div>
+      </div>
+    </div>
+    <span class="badge"><span class="dot"></span> Contraseña correcta · falta el código</span>
+    <form method="POST" action="/login/2fa">
+      <input type="text" name="code" placeholder="123 456" autofocus required
+        inputmode="numeric" autocomplete="one-time-code" maxlength="20" style="letter-spacing:.15em;text-align:center">
+      __ERR__
+      <button type="submit">Entrar</button>
+    </form>
+    <div class="sub" style="margin-top:14px;text-align:center;font-size:.82rem">
+      ¿No tienes el móvil? Escribe en el mismo campo uno de tus <b>códigos de recuperación</b> (tipo a1b2c-3d4e5).
+      Si tampoco los tienes, pide a otro administrador que te quite el 2FA.
+    </div>
+    <div class="sub" style="margin-top:12px;text-align:center">
+      <a href="/login" style="color:var(--muted);text-decoration:none">Volver al inicio de sesión</a>
+    </div>
+  </div>
+</body>
+
+</html>

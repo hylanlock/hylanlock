@@ -19,6 +19,7 @@ Uso como CLI (para el script de sync u otros):
 """
 
 import os
+import json
 import hmac
 import hashlib
 import secrets
@@ -221,6 +222,11 @@ def init_db():
                 ("status",        "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"),
                 ("token_version", "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1"),
                 ("source",        "ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local'"),
+                # 2FA (TOTP): secreto, último contador usado (anti-reutilización) y hashes de los
+                # códigos de recuperación (JSON). NULL = 2FA desactivado.
+                ("totp_secret",   "ALTER TABLE users ADD COLUMN totp_secret TEXT"),
+                ("totp_last",     "ALTER TABLE users ADD COLUMN totp_last INTEGER NOT NULL DEFAULT 0"),
+                ("totp_recovery", "ALTER TABLE users ADD COLUMN totp_recovery TEXT"),
                 ("subfolder_id",  "ALTER TABLE user_roles ADD COLUMN subfolder_id INTEGER"),
                 ("bl_expires",    "ALTER TABLE buzon_links ADD COLUMN expires_at TEXT"),
                 ("bl_oneshot",    "ALTER TABLE buzon_links ADD COLUMN one_shot INTEGER NOT NULL DEFAULT 1")):
@@ -574,11 +580,161 @@ def list_users():
         with _lock:
             c = _connect()
             rows = c.execute(
-                "SELECT username,scope,boss,created_at,status FROM users ORDER BY username").fetchall()
-        return [{"username": u, "scope": s, "boss": bool(b), "created_at": t, "status": st}
-                for u, s, b, t, st in rows]
+                "SELECT u.username, u.scope, u.boss, u.created_at, u.status, u.totp_secret IS NOT NULL, "
+                "EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id "
+                "       WHERE ur.user_id = u.id AND r.name = 'supervisor' "
+                "       AND ur.department_id IS NULL AND ur.subfolder_id IS NULL) "
+                "FROM users u ORDER BY u.username").fetchall()
+        return [{"username": u, "scope": s, "boss": bool(b), "created_at": t, "status": st,
+                 "totp": bool(tf), "supervisor": bool(sv)} for u, s, b, t, st, tf, sv in rows]
     except Exception:
         return []
+
+
+# ------------------------------------------------------------------ 2FA (TOTP)
+RECOVERY_CODES = 8
+
+
+def _recovery_hash(code):
+    """Hash de un código de recuperación normalizado (sin guiones ni espacios, minúsculas)."""
+    norm = "".join(ch for ch in str(code or "").lower() if ch.isalnum())
+    return hashlib.sha256(("hylanlock-recovery|" + norm).encode()).hexdigest()
+
+
+def _new_recovery_codes():
+    """8 códigos tipo 'a1b2c-3d4e5' (40 bits cada uno, de un solo uso). Solo se guardan sus hashes."""
+    codes = []
+    for _ in range(RECOVERY_CODES):
+        h = secrets.token_hex(5)
+        codes.append(f"{h[:5]}-{h[5:]}")
+    return codes, [_recovery_hash(c) for c in codes]
+
+
+def totp_status(username):
+    """{'enabled': bool, 'recovery_left': n}."""
+    try:
+        with _lock:
+            c = _connect()
+            row = c.execute("SELECT totp_secret, totp_recovery FROM users WHERE username=?",
+                            (username,)).fetchone()
+    except Exception:
+        row = None
+    if not row or not row[0]:
+        return {"enabled": False, "recovery_left": 0}
+    try:
+        left = len(json.loads(row[1] or "[]"))
+    except ValueError:
+        left = 0
+    return {"enabled": True, "recovery_left": left}
+
+
+def totp_enable(username, secret, counter=0):
+    """Activa el 2FA con 'secret' (ya verificado con un código: 'counter' es el suyo, para que no
+    pueda reutilizarse al entrar). Devuelve los códigos de recuperación EN CLARO (única vez)."""
+    codes, hashes = _new_recovery_codes()
+    with _lock:
+        c = _connect()
+        c.execute("UPDATE users SET totp_secret=?, totp_last=?, totp_recovery=? WHERE username=?",
+                  (secret, int(counter), json.dumps(hashes), username))
+        c.commit()
+    return codes
+
+
+def totp_regen_recovery(username):
+    """Nuevos códigos de recuperación (invalida los anteriores)."""
+    codes, hashes = _new_recovery_codes()
+    with _lock:
+        c = _connect()
+        c.execute("UPDATE users SET totp_recovery=? WHERE username=? AND totp_secret IS NOT NULL",
+                  (json.dumps(hashes), username))
+        c.commit()
+    return codes
+
+
+def totp_disable(username):
+    """Quita el 2FA. Devuelve True si lo tenía activado."""
+    with _lock:
+        c = _connect()
+        n = c.execute("UPDATE users SET totp_secret=NULL, totp_last=0, totp_recovery=NULL "
+                      "WHERE username=? AND totp_secret IS NOT NULL", (username,)).rowcount
+        c.commit()
+    return n > 0
+
+
+def totp_check(username, code):
+    """Comprueba un código del móvil o uno de recuperación. Devuelve 'totp', 'recovery' o None.
+    Ambos son de un solo uso: el TOTP no se acepta dos veces (contador) y el de recuperación se
+    consume. Todo bajo el mismo lock: dos peticiones simultáneas con el mismo código no pasan."""
+    import totp as _totp
+    with _lock:
+        c = _connect()
+        row = c.execute("SELECT totp_secret, totp_last, totp_recovery FROM users "
+                        "WHERE username=? AND status='active'", (username,)).fetchone()
+        if not row or not row[0]:
+            return None
+        secret, last, rec = row
+        counter = _totp.verify(secret, code, last_counter=last or 0)
+        if counter is not None:
+            c.execute("UPDATE users SET totp_last=? WHERE username=?", (counter, username))
+            c.commit()
+            return "totp"
+        try:
+            hashes = json.loads(rec or "[]")
+        except ValueError:
+            hashes = []
+        h = _recovery_hash(code)
+        if any(hmac.compare_digest(h, x) for x in hashes):
+            hashes = [x for x in hashes if not hmac.compare_digest(h, x)]
+            c.execute("UPDATE users SET totp_recovery=? WHERE username=?", (json.dumps(hashes), username))
+            c.commit()
+            return "recovery"
+    return None
+
+
+def set_supervisor(username, on):
+    """Da o quita el rol GLOBAL 'supervisor' (gobernanza sin leer). Devuelve False si no existe."""
+    with _lock:
+        c = _connect()
+        uid = _user_id(c, username)
+        if uid is None:
+            return False
+        c.execute("DELETE FROM user_roles WHERE user_id=? AND department_id IS NULL "
+                  "AND subfolder_id IS NULL AND role_id=(SELECT id FROM roles WHERE name='supervisor')",
+                  (uid,))
+        if on:
+            _assign_role(c, uid, "supervisor")
+        c.commit()
+    return True
+
+
+def folder_activity():
+    """Actividad por carpeta y por archivo, sacada de la auditoría (para el explorador de
+    gobernanza). Devuelve:
+      folders: {tag: {"ts", "type", "user"}}             último movimiento de cada carpeta
+      files:   {(tag, nombre): {"by", "at", "downloads"}} quién lo subió, cuándo, nº descargas
+    'tag' es el prefijo de folder_tag() ('[dep] ' o '[dep/sub] ')."""
+    folders, files = {}, {}
+    try:
+        with _lock:
+            c = _connect()
+            rows = c.execute("SELECT ts, type, user, detail FROM events WHERE type IN "
+                             "('upload_dep','upload_sub','download') AND detail LIKE '[%' "
+                             "ORDER BY id").fetchall()
+    except Exception:
+        return folders, files
+    for ts, typ, user, detail in rows:
+        cierre = detail.find("] ")
+        if cierre < 0:
+            continue
+        tag, resto = detail[:cierre + 2], detail[cierre + 2:]
+        nombre = resto.split(" · sha256:")[0].strip()
+        folders[tag] = {"ts": ts, "type": typ, "user": user or "—"}
+        f = files.setdefault((tag, nombre), {"by": None, "at": None, "downloads": 0})
+        if typ == "download":
+            f["downloads"] += 1
+        else:
+            f["by"], f["at"] = user or "—", ts
+    return folders, files
 
 
 def delete_user(username):
@@ -1303,6 +1459,9 @@ RBAC_PERMISSIONS = [
     "dept.view", "files.list", "files.upload", "files.download", "files.delete",
     "depts.manage", "users.manage", "roles.manage", "audit.view",
     "apikeys.manage", "config.manage", "remote.access", "security.manage",
+    # 'folder.oversee' = GOBERNANZA SIN LEER: ver la estructura de TODAS las carpetas (tamaños,
+    # antigüedad, accesos, actividad) sin abrir, descargar ni ver el nombre de ningún archivo.
+    "folder.oversee",
 ]
 RBAC_ROLES = {
     # roles de negocio -> se asignan ACOTADOS a un departamento
@@ -1322,7 +1481,12 @@ RBAC_ROLES = {
     # sysadmin -> se asigna GLOBAL. Solo gestión; al admin se le añade además 'director'
     # en la migración para conservar su acceso actual a todos los departamentos.
     "it_admin": ["users.manage", "depts.manage", "roles.manage", "audit.view",
-                 "apikeys.manage", "config.manage", "security.manage", "remote.access"],
+                 "apikeys.manage", "config.manage", "security.manage", "remote.access",
+                 "folder.oversee"],
+    # 'supervisor': gobernanza sin leer (DPO, gerencia, técnico del MSP). Se asigna GLOBAL y es
+    # independiente del rol de la persona: un empleado puede ser además supervisor. No da acceso
+    # a ningún archivo ni a la auditoría completa (cuyos detalles llevan nombres de archivo).
+    "supervisor": ["folder.oversee"],
     # Solo concede salir del candado LAN. Se asigna GLOBAL y a mano, normalmente a una cuenta de
     # servicio que deba llamar desde fuera de la red. No da acceso a ninguna carpeta por sí solo.
     "remote_client": ["remote.access"],
@@ -1607,6 +1771,14 @@ if __name__ == "__main__":
         init_db()
         for u in list_users():
             print(f"{u['username']:<14} {u['scope']:<7} {u['created_at']}")
+    elif len(args) >= 3 and args[0] == "user" and args[1] == "reset-2fa":
+        # db.py user reset-2fa <usuario>  -> rescate si se pierde el móvil y no hay otro admin
+        init_db()
+        if totp_disable(args[2]):
+            log_event("2fa_reset", user="consola del servidor", origin="local", detail=args[2])
+            print(f"2FA desactivado para '{args[2]}'. Ya puede entrar solo con su contraseña.")
+        else:
+            print(f"'{args[2]}' no existe o no tenía el 2FA activado.")
     elif len(args) >= 2 and args[0] == "backup":
         # db.py backup <ruta_destino.db>  -> copia consistente de la BD
         init_db()
@@ -1614,4 +1786,5 @@ if __name__ == "__main__":
     else:
         print("uso: db.py log <tipo> [detalle] [bytes]  |  db.py show [N]  |  "
               "db.py user add <usr> <pass> <scope>  |  db.py user list  |  db.py user del <usr>  |  "
+              "db.py user reset-2fa <usr>  |  "
               "db.py backup <destino.db>")

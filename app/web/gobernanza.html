@@ -1,0 +1,116 @@
+<!-- Fragmento de contenido: GOBERNANZA (gestionar sin leer). Lo envuelve layout.html (shell + sidebar).
+     Los datos llegan ya sin nombres de archivo (ver governance_snapshot en hylanlock.py). -->
+<style>
+  .gv-note { color: var(--muted); font-size: .86rem; margin: 4px 0 16px; }
+  .gv-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .gv-kpi { background: linear-gradient(180deg, var(--surface-2), var(--surface-3)); border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 14px; }
+  .gv-kpi .l { color: var(--muted); font-size: .78rem; }
+  .gv-kpi .v { font-size: 1.35rem; font-weight: 700; margin-top: 2px; }
+  .gv-kpi .s { color: var(--faint); font-size: .76rem; margin-top: 2px; }
+  .gv-kpi.warn .v { color: var(--warn); }
+  .gv-card { margin-top: 12px; background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
+    border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+  .gv-sub { margin: 10px 0 0 14px; padding: 10px 12px; border-left: 2px solid var(--border);
+    background: color-mix(in srgb, var(--surface-2) 60%, transparent); border-radius: 0 12px 12px 0; }
+  .gv-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+  .gv-head .n { font-weight: 700; }
+  .gv-meta { color: var(--muted); font-size: .84rem; margin-top: 4px; }
+  .gv-tag { display: inline-block; font-size: .72rem; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted); }
+  .gv-tag.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+  .gv-tag.acc { background: var(--accent-weak); color: var(--accent); }
+  .gv-access { margin-top: 6px; font-size: .82rem; color: var(--muted); }
+  .gv-access b { color: var(--text); font-weight: 600; }
+  .gv-files { margin-top: 8px; }
+  .gv-files summary { cursor: pointer; color: var(--accent); font-size: .85rem; font-weight: 600; }
+  .gv-tbl { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: 8px; }
+  .gv-tbl th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 8px 4px 0; }
+  .gv-tbl td { padding: 4px 8px 4px 0; border-top: 1px solid var(--border); }
+  .gv-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .gv-mono { font-family: monospace; font-size: .8rem; }
+  .gv-wrap { overflow-x: auto; }
+</style>
+
+<div class="content-head">
+  <div class="logo"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+  <div>
+    <h1>Gobernanza</h1>
+    <div class="sub">Gestiona sin leer: la estructura de todas las carpetas, sin abrir nada</div>
+  </div>
+</div>
+
+<div class="gv-note">Ves tamaños, antigüedad, quién tiene acceso y la actividad de cada carpeta. <b>No se muestra el
+  contenido ni el nombre de ningún archivo</b>: cada uno se identifica por su tipo, tamaño, fecha y huella SHA-256.</div>
+
+<div class="gv-kpis" id="gv-kpis"></div>
+<div class="gv-access" id="gv-global" style="margin-top:14px"></div>
+<div id="gv-tree"></div>
+
+<script>
+(function () {
+  const GOV = __GOVDATA__;
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const size = b => { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; b = b || 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + ' ' + u[i]; };
+  const fecha = t => t ? new Date(t * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  const hace = t => {
+    if (!t) return 'nunca';
+    const d = (Date.now() / 1000 - t) / 86400;
+    if (d < 1 / 24) return 'hace minutos';
+    if (d < 1) return 'hace ' + Math.round(d * 24) + ' h';
+    if (d < 60) return 'hace ' + Math.round(d) + ' d';
+    return 'hace ' + Math.round(d / 30) + ' meses';
+  };
+  const ROL = { member: 'miembro', head: 'jefe', employee: 'miembro', folder_owner: 'dueño', depositor: 'solo deja', reader: 'solo lee' };
+  const MOV = { upload_dep: 'subida', upload_sub: 'subida', download: 'descarga' };
+  const k = GOV.kpi;
+
+  document.getElementById('gv-kpis').innerHTML = [
+    ['Carpetas', k.deps + k.subs, k.deps + ' departamentos · ' + k.subs + ' subcarpetas', ''],
+    ['Archivos', k.files, size(k.size) + ' en total', ''],
+    ['Sin movimiento', k.stale, 'carpetas sin actividad en ' + GOV.stale_days + ' días', k.stale ? 'warn' : ''],
+    ['Antiguos', k.old_files, 'archivos de más de ' + Math.round(GOV.old_days / 365) + ' año', k.old_files ? 'warn' : ''],
+    ['Duplicados', k.dup_copies, k.dup_copies ? size(k.dup_bytes) + ' en copias repetidas' : 'ninguna copia repetida', k.dup_copies ? 'warn' : ''],
+    ['Vacías', k.empty, 'carpetas sin archivos', ''],
+  ].map(([l, v, s, c]) => `<div class="gv-kpi ${c}"><div class="l">${l}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`).join('');
+
+  document.getElementById('gv-global').innerHTML =
+    `Acceso a <b>todas</b> las carpetas (administradores y directores): <b>${esc(GOV.global_access.join(', ') || '—')}</b>` +
+    (GOV.supervisors.length ? ` · Supervisores (ven esta vista, no los archivos): <b>${esc(GOV.supervisors.join(', '))}</b>` : '');
+
+  function acceso(list, extra) {
+    const quien = list.map(a => `<b>${esc(a.username)}</b> (${esc(ROL[a.role] || a.role)})`).join(', ');
+    return `<div class="gv-access">Acceso: ${quien || 'nadie asignado'}${extra}</div>`;
+  }
+  function archivos(c) {
+    if (!c.count) return '';
+    const filas = c.files.map((f, i) => `<tr>
+      <td>#${i + 1}</td><td>${f.ext ? '.' + esc(f.ext) : '—'}</td><td class="num">${size(f.size)}</td>
+      <td>${fecha(f.mtime)}</td><td>${esc(f.by || '—')}</td><td class="num">${f.downloads || 0}</td>
+      <td class="gv-mono">${f.hash ? esc(f.hash) + '…' : '—'}${f.dup ? ' <span class="gv-tag warn">duplicado</span>' : ''}</td></tr>`).join('');
+    const mas = c.count > c.files.length ? `<div class="gv-meta">Mostrando los ${c.files.length} más recientes de ${c.count}.</div>` : '';
+    return `<details class="gv-files"><summary>Ver ${c.count === 1 ? "el archivo" : "los " + c.count + " archivos"} (sin nombres)</summary><div class="gv-wrap">
+      <table class="gv-tbl"><thead><tr><th>#</th><th>Tipo</th><th class="num">Tamaño</th><th>Fecha</th><th>Subido por</th>
+      <th class="num">Descargas</th><th>Huella SHA-256</th></tr></thead><tbody>${filas}</tbody></table></div>${mas}</details>`;
+  }
+  function carpeta(c, esSub) {
+    const tags = [];
+    if (!c.count) tags.push('<span class="gv-tag">vacía</span>');
+    if (c.stale) tags.push(`<span class="gv-tag warn">sin movimiento ${GOV.stale_days}+ días</span>`);
+    if (c.old_files) tags.push(`<span class="gv-tag warn">${c.old_files} antiguo(s)</span>`);
+    if (c.buzones) tags.push(`<span class="gv-tag acc">${c.buzones} enlace(s) de buzón activo(s)</span>`);
+    const ult = c.last ? `último movimiento ${hace(c.last.ts)}: ${MOV[c.last.type] || c.last.type} de ${esc(c.last.user)}` : 'sin actividad registrada';
+    const rango = c.count ? ` · del ${fecha(c.oldest)} al ${fecha(c.newest)}` : '';
+    return `<div class="${esSub ? 'gv-sub' : 'gv-card'}">
+      <div class="gv-head"><span class="n">${esSub ? '↳ ' : ''}${esc(c.name)}</span> ${tags.join(' ')}</div>
+      <div class="gv-meta">${c.count} archivo(s) · ${size(c.size)}${rango} · ${ult}</div>
+      ${acceso(c.access, esSub ? ' + el jefe del departamento y quien tiene acceso global' : ' + quien tiene acceso global')}
+      ${archivos(c)}
+      ${(c.subs || []).map(s => carpeta(s, true)).join('')}
+    </div>`;
+  }
+  document.getElementById('gv-tree').innerHTML = GOV.deps.length
+    ? GOV.deps.map(d => carpeta(d, false)).join('')
+    : '<div class="gv-card"><div class="gv-meta">Aún no hay departamentos.</div></div>';
+})();
+</script>
