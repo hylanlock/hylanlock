@@ -798,6 +798,33 @@ def set_blocked_ext(texto):
     return _blocked_cache
 
 
+# ── Marca blanca EFECTIVA: lo guardado en Ajustes (tabla meta) o el valor de fábrica/entorno ──
+def brand_name():
+    v = db.meta_get("brand_name")
+    return v.strip() if v and v.strip() else BRAND_NAME
+
+
+def brand_logo():
+    # None = nunca configurado -> entorno; "" = configurado a vacío -> candado por defecto.
+    v = db.meta_get("brand_logo")
+    return BRAND_LOGO if v is None else v
+
+
+def brand_accent():
+    v = db.meta_get("accent")
+    return ((v if v is not None else ACCENT) or "").strip()
+
+
+def set_branding(name=None, logo=None, accent=None):
+    """Guarda la marca blanca en meta. Cada campo None = no se toca. Se aplica en toda la interfaz."""
+    if name is not None:
+        db.meta_set("brand_name", name.strip()[:40])
+    if logo is not None:
+        db.meta_set("brand_logo", logo.strip()[:8])
+    if accent is not None:
+        db.meta_set("accent", accent.strip()[:9])
+
+
 def extension_bloqueada(nombre):
     """Devuelve la extensión (sin punto) si está en la lista de bloqueo EFECTIVA, o '' si se permite.
 
@@ -981,16 +1008,29 @@ _PWA_SW = ('<script>if("serviceWorker" in navigator){window.addEventListener("lo
 
 
 def _inject_theme(text):
-    """Añade el script de tema y el acento de marca en <head>, el botón antes de </body>, y aplica
-    el nombre/logo de marca (__BRAND__/__LOGO__) en TODAS las páginas que pasan por aquí."""
-    text = text.replace("<head>", "<head>" + _THEME_HEAD + _ACCENT_STYLE + _PWA_HEAD, 1)
+    """Añade el script de tema y el acento de marca en <head>, el SW antes de </body>, y aplica el
+    nombre/logo de marca (__BRAND__/__LOGO__) en TODAS las páginas. La marca (nombre, logo, acento)
+    se lee de la BD (Ajustes) con respaldo al entorno, así se puede configurar en caliente."""
+    bname, blogo, bacc = brand_name(), brand_logo(), brand_accent()
+    # Acento de marca: si hay un color válido, redefine el token en todas las páginas (!important).
+    accent_style = ""
+    if bacc and _valid_hex(bacc):
+        accent_style = (
+            "<style>:root{"
+            f"--accent:{bacc}!important;--accent-strong:{bacc}!important;"
+            f"--accent-weak:color-mix(in srgb,{bacc} 12%,transparent)!important;"
+            "--accent-contrast:#fff!important;"
+            f"--accent-grad:linear-gradient(135deg,{bacc},{bacc})!important;"
+            f"--accent-line:linear-gradient(90deg,{bacc},{bacc})!important;"
+            "}</style>")
+    text = text.replace("<head>", "<head>" + _THEME_HEAD + accent_style + _PWA_HEAD, 1)
     # El tema se elige ahora en Ajustes (no un botón flotante). _THEME_HEAD sigue aplicando la
     # preferencia guardada (o la del sistema) en cada página, incluidas login y los enlaces de buzón.
     text = text.replace("</body>", _PWA_SW + "</body>", 1)
-    text = text.replace("__BRAND__", html.escape(BRAND_NAME)).replace("__LOGO__", html.escape(BRAND_LOGO) if BRAND_LOGO else BRAND_LOGO_SVG)
-    if BRAND_NAME != "Hylanlock":
+    text = text.replace("__BRAND__", html.escape(bname)).replace("__LOGO__", html.escape(blogo) if blogo else BRAND_LOGO_SVG)
+    if bname != "Hylanlock":
         # Rebrand del nombre en textos que aún digan "Hylanlock" (seguro: las clases/ids usan "hyl-").
-        text = text.replace("Hylanlock", html.escape(BRAND_NAME))
+        text = text.replace("Hylanlock", html.escape(bname))
     return text
 
 
@@ -1312,6 +1352,7 @@ _GUARD_POST = {
     "/admin/user/role":        {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/invite":           {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/config/extensiones": {"lan": True, "perm": "users.manage", "elevated": True},
+    "/admin/config/marca":      {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/licencia":         {"lan": True, "perm": "users.manage"},
     "/perfil/solicitar":       {"lan": True},
     # Despachar avisos sin abrir la carpeta. No hace falta step-up: no concede acceso ni borra
@@ -1922,14 +1963,42 @@ class Handler(BaseHTTPRequestHandler):
             '<a class="ajlink" href="/admin/licencia">Ver / instalar licencia &rarr;</a></div>'
         )
         seguridad = (
-            '<h2 class="sec">Seguridad</h2>'
-            '<div class="aj-card"><div class="ttl">Extensiones bloqueadas al subir</div>'
-            '<div class="dsc">Tipos de archivo que no se pueden subir (ejecutables, etc.).</div>'
-            '<a class="ajlink" href="/admin">Configurar en Administración &rarr;</a></div>'
+            '<h2 class="sec">Seguridad de subidas — extensiones bloqueadas</h2>'
+            '<div class="aj-card">'
+            '<div class="dsc">Marca los tipos de archivo que quieres <b>rechazar al subir</b>. Es una capa de '
+            'higiene contra ejecutables/scripts que alguien podría abrir por error; renombrar la extensión la '
+            'salta, así que no sustituye a un antivirus.</div>'
+            '<div id="ext-groups" style="margin-top:10px"></div>'
+            '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:.85rem;color:var(--accent)">'
+            'Otras extensiones (avanzado)</summary>'
+            '<p style="font-size:.82rem;color:var(--muted);margin:8px 0 6px">Añade extensiones que no estén en la '
+            'lista, separadas por comas (sin el punto).</p>'
+            '<input id="ext-otras" type="text" style="width:100%;box-sizing:border-box;font-family:monospace;'
+            'background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:10px;'
+            'padding:9px 11px" placeholder="ej. iso, apk, run"></details>'
+            '<div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+            '<button class="mini" onclick="saveExt()">Guardar</button>'
+            '<button class="mini" onclick="extNone()">Desmarcar todo</button>'
+            '<span id="ext-msg" style="font-size:.85rem;color:var(--muted)"></span></div></div>'
         )
-        proximamente = ('<div class="softnote">Próximamente aquí: marca blanca (nombre, logo y color), '
-                        'política de contraseñas y avisos.</div>')
-        return plan + seguridad + proximamente
+        marca = (
+            '<h2 class="sec">Marca blanca</h2>'
+            '<div class="aj-card"><div class="ttl">Personaliza tu Hylanlock</div>'
+            '<div class="dsc">Nombre, logo (un emoji o 1-2 letras; vacío = candado) y color de acento. '
+            'Se aplica en toda la interfaz al guardar.</div>'
+            '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center">'
+            f'<input id="mk-name" placeholder="Nombre" value="{html.escape(brand_name())}" style="flex:1;min-width:160px">'
+            f'<input id="mk-logo" placeholder="Logo (emoji)" value="{html.escape(brand_logo() or "")}" maxlength="8" style="width:120px">'
+            f'<input id="mk-accent" type="color" value="{brand_accent() if _valid_hex(brand_accent()) else "#1e40af"}" '
+            'style="width:54px;height:40px;padding:3px" title="Color de acento">'
+            '<button class="mini" onclick="saveMarca()">Guardar</button>'
+            '<span id="mk-msg" class="dsc" style="width:100%;margin-top:2px"></span>'
+            '</div></div>'
+        )
+        proximamente = ('<div class="softnote">Próximamente aquí: política de contraseñas y avisos.</div>')
+        header = ('<div class="aj-group" style="margin-top:30px">Ajustes de la organización'
+                  '<span> · solo administradores, afectan a toda la empresa</span></div>')
+        return header + plan + marca + seguridad + proximamente
 
     def _shell(self, content_page, active, title, **markers):
         """Envuelve el fragmento 'content_page' con el shell (sidebar + contenido). El fragmento
@@ -1944,8 +2013,6 @@ class Handler(BaseHTTPRequestHandler):
         doc = (_template(LAYOUT_PAGE)
                .replace("__CSS__", _template(CSS))
                .replace("__TITLE__", html.escape(title))
-               .replace("__BRAND__", html.escape(BRAND_NAME))
-               .replace("__LOGO__", html.escape(BRAND_LOGO) if BRAND_LOGO else BRAND_LOGO_SVG)
                .replace("__ORG__", html.escape(ORG_NAME))
                .replace("__NAV__", self._nav_items(active))
                .replace("__USER__", html.escape(user))
@@ -2581,6 +2648,17 @@ class Handler(BaseHTTPRequestHandler):
             db.log_event("config_blocked_ext", user=me, origin=self._origin(),
                          ip=self._client_ip(), detail=f"{len(guardadas)} extensiones bloqueadas")
             self._json({"ok": True, "blocked_ext": sorted(guardadas)})
+        elif path == "/admin/config/marca":
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = (self._current_user() or (None,))[0]
+            acc = d.get("accent", [""])[0].strip()
+            if acc and not _valid_hex(acc):
+                self._json({"error": "Color no válido (usa #rrggbb)"}, 400)
+            else:
+                set_branding(name=d.get("name", [""])[0], logo=d.get("logo", [""])[0], accent=acc)
+                db.log_event("config_brand", user=me, origin=self._origin(), ip=self._client_ip(),
+                             detail=f"nombre='{brand_name()}' acento='{brand_accent()}'")
+                self._json({"ok": True, "name": brand_name(), "logo": brand_logo(), "accent": brand_accent()})
         elif path == "/admin/users/add":
             body = self._read_body().decode("utf-8", "replace")
             d = parse_qs(body)

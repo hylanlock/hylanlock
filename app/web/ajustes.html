@@ -13,6 +13,8 @@
   .planbadge { display: inline-block; font-size: .82rem; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
   .ajlink { display: inline-block; margin-top: 10px; color: var(--accent); text-decoration: none; font-weight: 600; font-size: .88rem; }
   .softnote { color: var(--faint); font-size: .8rem; margin-top: 14px; }
+  .aj-group { font-size: 1.05rem; font-weight: 700; margin-top: 8px; letter-spacing: -.01em; }
+  .aj-group span { color: var(--muted); font-weight: 400; font-size: .84rem; }
 </style>
 
 <div class="content-head">
@@ -23,6 +25,7 @@
   </div>
 </div>
 
+<div class="aj-group">Tus ajustes <span>· este equipo, solo para ti</span></div>
 <h2 class="sec">Apariencia</h2>
 <div class="aj-card">
   <div class="ttl">Tema</div>
@@ -65,5 +68,78 @@ __ADMINBLOCK__
     let cur = 'system'; try { cur = localStorage.getItem('hyl-theme') || 'system'; } catch (e) {}
     const b = document.querySelector('#theme-seg button[data-v="' + cur + '"]');
     if (b) b.classList.add('on');
+  })();
+
+  // Marca blanca (solo admin; los campos solo existen si el servidor pintó la sección).
+  async function saveMarca() {
+    const msg = document.getElementById('mk-msg'); if (!msg) return;
+    const body = new URLSearchParams({
+      name: document.getElementById('mk-name').value,
+      logo: document.getElementById('mk-logo').value,
+      accent: document.getElementById('mk-accent').value
+    });
+    msg.style.color = 'var(--muted)'; msg.textContent = 'Guardando…';
+    try {
+      const r = await fetch('/admin/config/marca', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+      if (r.status === 403) {
+        const t = await r.text().catch(() => '');
+        if (/step-up|re-auten/i.test(t)) { location.href = '/elevate?next=/ajustes'; return; }
+        msg.style.color = 'var(--text-danger, #c81e1e)'; msg.textContent = 'Sin permiso.'; return;
+      }
+      const j = await r.json().catch(() => ({}));
+      if (j.ok) { msg.style.color = 'var(--ok)'; msg.textContent = 'Guardado. Aplicando…'; setTimeout(() => location.reload(), 600); }
+      else { msg.style.color = 'var(--err)'; msg.textContent = j.error || 'No se pudo guardar.'; }
+    } catch (e) { msg.style.color = 'var(--err)'; msg.textContent = 'Error de red.'; }
+  }
+
+  // ── Extensiones bloqueadas (solo admin; los elementos solo existen si el servidor los pintó) ──
+  let EXT_CFG = { blocked_ext: [] };
+  const EXT_GROUPS = [
+    { t: 'Ejecutables de Windows', i: [['exe', 'Programa (.exe)'], ['msi', 'Instalador (.msi)'], ['msp', 'Parche (.msp)'], ['com', 'MS-DOS (.com)'], ['scr', 'Salvapantallas (.scr)'], ['pif', 'Acceso MS-DOS (.pif)'], ['cpl', 'Panel de control (.cpl)'], ['bat', 'Lote (.bat)'], ['cmd', 'Comandos (.cmd)']] },
+    { t: 'Scripts', i: [['js', 'JavaScript (.js)'], ['jse', 'JScript cifrado (.jse)'], ['vbs', 'VBScript (.vbs)'], ['vbe', 'VBScript cifrado (.vbe)'], ['wsf', 'Windows Script (.wsf)'], ['wsh', 'Script Host (.wsh)'], ['ps1', 'PowerShell (.ps1)'], ['psm1', 'Módulo PS (.psm1)'], ['hta', 'App HTML (.hta)'], ['sh', 'Shell Unix (.sh)']] },
+    { t: 'Sistema y atajos', i: [['dll', 'Librería (.dll)'], ['sys', 'Controlador (.sys)'], ['scf', 'Comando Explorer (.scf)'], ['msc', 'Consola MMC (.msc)'], ['reg', 'Registro (.reg)'], ['lnk', 'Acceso directo (.lnk)'], ['inf', 'Instalación (.inf)'], ['jar', 'Java (.jar)']] },
+    { t: 'Office con macros (riesgo alto, a veces legítimo)', i: [['docm', 'Word macros (.docm)'], ['xlsm', 'Excel macros (.xlsm)'], ['xlsb', 'Excel binario (.xlsb)'], ['pptm', 'PowerPoint macros (.pptm)'], ['dotm', 'Plantilla Word (.dotm)']] },
+  ];
+  function renderExtGroups() {
+    const box = document.getElementById('ext-groups');
+    if (!box || box.dataset.built) return;
+    box.innerHTML = EXT_GROUPS.map(g =>
+      `<div style="margin-top:12px"><div style="font-size:.8rem;color:var(--muted);margin-bottom:6px">${g.t}</div>` +
+      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px 12px">` +
+      g.i.map(([e, l]) => `<label style="display:flex;gap:7px;align-items:center;font-size:.85rem;cursor:pointer">` +
+        `<input type="checkbox" value="${e}" style="width:auto"> ${l}</label>`).join('') + `</div></div>`).join('');
+    box.dataset.built = '1';
+  }
+  function setExtFromConfig() {
+    const blocked = new Set((EXT_CFG.blocked_ext || []).map(e => String(e).toLowerCase()));
+    const known = new Set();
+    document.querySelectorAll('#ext-groups input[type=checkbox]').forEach(cb => { known.add(cb.value); cb.checked = blocked.has(cb.value); });
+    const otras = document.getElementById('ext-otras'); if (otras) otras.value = [...blocked].filter(e => !known.has(e)).join(', ');
+  }
+  function collectExt() {
+    const picked = [];
+    document.querySelectorAll('#ext-groups input[type=checkbox]:checked').forEach(cb => picked.push(cb.value));
+    const otras = ((document.getElementById('ext-otras') || {}).value || '').split(',').map(s => s.trim()).filter(Boolean);
+    return picked.concat(otras).join(', ');
+  }
+  function extNone() {
+    document.querySelectorAll('#ext-groups input[type=checkbox]').forEach(cb => cb.checked = false);
+    const otras = document.getElementById('ext-otras'); if (otras) otras.value = '';
+  }
+  async function saveExt() {
+    const msg = document.getElementById('ext-msg'); if (!msg) return;
+    msg.style.color = 'var(--muted)'; msg.textContent = 'Guardando…';
+    try {
+      const r = await fetch('/admin/config/extensiones', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ ext: collectExt() }) });
+      if (r.status === 403) { const t = await r.text().catch(() => ''); if (/step-up|re-auten/i.test(t)) { location.href = '/elevate?next=/ajustes'; return; } msg.style.color = 'var(--err)'; msg.textContent = 'Sin permiso.'; return; }
+      const j = await r.json().catch(() => ({}));
+      if (j.ok) { EXT_CFG.blocked_ext = j.blocked_ext || []; setExtFromConfig(); msg.style.color = 'var(--ok)'; msg.textContent = EXT_CFG.blocked_ext.length ? ('Guardado · ' + EXT_CFG.blocked_ext.length + ' extensiones bloqueadas') : 'Guardado · bloqueo DESACTIVADO'; }
+      else { msg.style.color = 'var(--err)'; msg.textContent = j.error || 'No se pudo guardar'; }
+    } catch (e) { msg.style.color = 'var(--err)'; msg.textContent = 'Error de red'; }
+  }
+  (async function () {
+    if (!document.getElementById('ext-groups')) return;
+    try { const r = await fetch('/api/admin/config'); EXT_CFG = r.ok ? await r.json() : { blocked_ext: [] }; } catch (e) {}
+    renderExtGroups(); setExtFromConfig();
   })();
 </script>
