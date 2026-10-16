@@ -1347,6 +1347,17 @@ def render(page, url="", qr_svg="", err="", pwpill="", depts="", slug="", depnam
     ).encode("utf-8")
 
 
+_STEPUP_CODE_FIELD = ('<input type="text" name="code" placeholder="Código de 6 cifras de tu app" required '
+                      'inputmode="numeric" autocomplete="one-time-code" maxlength="20">')
+
+
+def render_stepup(nxt, err="", need_code=False):
+    """Pantalla de step-up. Con 2FA activado pide también el código: si no, una contraseña robada
+    bastaría para elevar una sesión robada."""
+    return render(STEPUP_PAGE, err=err, nxt=nxt).replace(
+        b"__CODEFIELD__", _STEPUP_CODE_FIELD.encode("utf-8") if need_code else b"")
+
+
 def render_twofa(err=""):
     """Pantalla del segundo paso del login (código TOTP o de recuperación)."""
     return _inject_theme(_template(TWOFA_PAGE).replace("__CSS__", _template(CSS))
@@ -2724,7 +2735,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/admin/requests":
             self._json(db.list_access_requests("pending"))
         elif path == "/elevate":
-            self._send(200, render(STEPUP_PAGE, nxt=_safe_next(self._query().get("next", [""])[0])))
+            self._send(200, render_stepup(_safe_next(self._query().get("next", [""])[0]),
+                                          need_code=db.totp_status(self._username() or "")["enabled"]))
         elif path == "/api/departamentos":
             self._send(200, json.dumps(self._depts_visibles()).encode("utf-8"),
                        "application/json; charset=utf-8")
@@ -3075,8 +3087,18 @@ class Handler(BaseHTTPRequestHandler):
             d = parse_qs(self._read_body().decode("utf-8", "replace"))
             nxt = _safe_next(d.get("next", [""])[0])
             me = self._username()
+            ip = self._client_ip()
+            need_code = bool(me) and db.totp_status(me)["enabled"]
+            if login_blocked(ip):
+                # Mismo freno que el login: sin él, el código de 6 cifras se podría adivinar aquí.
+                self._send(429, render_stepup(nxt, '<div class="err-msg">Demasiados intentos fallidos. '
+                                                   'Espera unos minutos.</div>', need_code))
+                return
             scope = db.verify_user(me, d.get("password", [""])[0]) if me else None
+            if scope and need_code and not db.totp_check(me, d.get("code", [""])[0]):
+                scope = None
             if scope:
+                clear_login_fails(ip)
                 tv = (db.get_user(me) or {}).get("token_version", 1)
                 elev = int(time.time()) + STEPUP_MINUTES * 60
                 rem = self._session_field(4)   # idx 4 = "recordarme"; conserva la persistencia
@@ -3086,9 +3108,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(302, extra=[("Location", nxt),
                                        ("Set-Cookie", session_cookie(value, bool(rem), secure=self._tls()))])
             else:
-                db.log_event("stepup_fail", user=me, origin=self._origin(), ip=self._client_ip())
-                err = '<div class="err-msg">Contraseña incorrecta</div>'
-                self._send(200, render(STEPUP_PAGE, err=err, nxt=nxt))
+                n = record_login_fail(ip)
+                db.log_event("stepup_fail", user=me, origin=self._origin(), ip=ip, detail=f"intento {n}")
+                if n >= LOGIN_MAX_FAILS:
+                    db.log_event("brute_block", origin=self._origin(), ip=ip)
+                    notify_telegram(f"SEGURIDAD: bloqueo por fuerza bruta (step-up de {me})\n"
+                                    f"IP: {ip}\nHora: {time.strftime('%H:%M')}")
+                time.sleep(min(n, 5) * 0.4)
+                msg = "Contraseña o código incorrectos" if need_code else "Contraseña incorrecta"
+                self._send(200, render_stepup(nxt, f'<div class="err-msg">{msg}</div>', need_code))
         elif path == "/admin/config/extensiones":
             d = parse_qs(self._read_body().decode("utf-8", "replace"))
             me = (self._current_user() or (None,))[0]

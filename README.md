@@ -52,6 +52,9 @@ más control sobre **cómo y dónde** se mueven sus archivos:
   el acceso, incluidos grupos anidados, sobre LDAPS con validación de certificado.
 - **Auditoría** — quién entró, qué movió y qué se le denegó; exportable a CSV. Los avisos salen de ese
   mismo registro.
+- **Gobernanza sin leer** — un rol *Supervisor* (DPO, gerencia, el técnico de tu proveedor IT) ve la
+  estructura de todas las carpetas: tamaños, antigüedad, accesos, actividad y duplicados, **sin abrir,
+  descargar ni ver el nombre de ningún archivo**.
 - **Licencias/trial offline** — verificación de licencia sin "llamar a casa" (Ed25519). Al caducar se
   **bloquea el uso pero nunca se tocan los datos**: el administrador siempre puede exportarlos.
 
@@ -62,6 +65,10 @@ más control sobre **cómo y dónde** se mueven sus archivos:
 - **Código auditable** — por eso es source-available: puedes leer exactamente qué hace.
 - Sesiones firmadas (HMAC), CSRF, contraseñas con PBKDF2, subida/descarga con protección contra
   *path traversal*, y un único punto de autorización. Ver [`HTTPS.md`](docs/HTTPS.md) para servir con TLS.
+- **Verificación en dos pasos (2FA)** para administradores (TOTP: Google/Microsoft Authenticator, Aegis…),
+  con códigos de recuperación y política "obligatorio para administradores".
+- **Aviso de exposición**: si el servicio empieza a recibir conexiones desde internet (un puerto abierto
+  en el router), el administrador lo ve al momento. Se detecta sin consultar ningún servicio externo.
 
 > Como todo software, Hylanlock no promete seguridad absoluta: la seguridad real depende también de
 > cómo lo despliegue y configure cada organización.
@@ -77,6 +84,15 @@ docker compose up -d      # arranca
 
 Al abrirlo por primera vez, un **asistente** te guía para crear el administrador e instalar tu licencia
 de prueba. Copias de seguridad en [`BACKUPS.md`](docs/BACKUPS.md); servir por HTTPS en [`HTTPS.md`](docs/HTTPS.md).
+
+## Desarrollo
+
+Cómo está hecho, cómo añadir algo sin abrir agujeros y cómo publicar: [`DESARROLLO.md`](docs/DESARROLLO.md).
+Pruebas de extremo a extremo contra una instancia real (sin dependencias):
+
+```bash
+python -m unittest discover -s tests -v
+```
 
 ## Estado
 
