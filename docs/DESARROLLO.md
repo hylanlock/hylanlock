@@ -122,6 +122,10 @@ Todo vive en `app/db.py`:
 
 **Rutas de archivos:** usa siempre `dep_dir()` / `sub_dir()`, que sanean con `os.path.basename`. Nunca construyas rutas con texto del usuario.
 
+**Nombres de archivo:** todo nombre que entre (web, API, buzón) pasa por `safe_relpath` (fuera `<>:"|?*` y control). Y todo nombre que se pinte, **siempre con `esc()`** en JS: en Linux el disco admite casi cualquier carácter, y un nombre es dato del usuario.
+
+**Borrar:** nunca `os.remove` sobre archivos de un cliente. Para eso está `move_to_trash()`: el borrado es blando y se puede restaurar.
+
 ---
 
 ## 7. Pruebas
@@ -222,6 +226,7 @@ class TestMiCosa(unittest.TestCase):
 | Aviso de exposición pública | `exposure_note`, `_exposure_banner`, `_exposure_card` |
 | Gobernanza (gestionar sin leer) | `governance_snapshot` · `/gobernanza` · `web/gobernanza.html` · rol `supervisor` |
 | 2FA | `app/totp.py` · `db.totp_*` · `/login/2fa`, `/perfil/2fa/*` · `web/twofa.html` · step-up en `/elevate` |
+| Papelera (borrado blando, solo admins) | `move_to_trash`, `restore_from_trash`, `trash_purge_expired` · tabla `trash` · `<DATA_DIR>/.papelera/<id>/` · `/papelera`, `/admin/papelera/*` · `web/papelera.html` · días en `meta` (`trash_days`, 0 = nunca) |
 
 ---
 

@@ -1,0 +1,74 @@
+<!-- Fragmento de contenido: PAPELERA (solo administradores). Lo envuelve layout.html (shell + sidebar). -->
+<style>
+  .tr-note { color: var(--muted); font-size: .86rem; margin: 4px 0 16px; }
+  .tr-wrap { overflow-x: auto; }
+  .tr-tbl { width: 100%; border-collapse: collapse; font-size: .86rem; }
+  .tr-tbl th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 10px 6px 0; }
+  .tr-tbl td { padding: 8px 10px 8px 0; border-top: 1px solid var(--border); vertical-align: middle; }
+  .tr-tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tr-name { font-weight: 600; word-break: break-all; }
+  .tr-sub { color: var(--muted); font-size: .78rem; }
+  .tr-acts { white-space: nowrap; }
+  .tr-acts button { margin: 0 4px 0 0; }
+  .tr-empty { background: linear-gradient(180deg, var(--surface-2), var(--surface-3)); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px; color: var(--muted); }
+</style>
+
+<div class="content-head">
+  <div class="logo"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg></div>
+  <div>
+    <h1>Papelera</h1>
+    <div class="sub">Lo que se borra no desaparece: se puede restaurar en su carpeta</div>
+  </div>
+</div>
+
+<div class="tr-note" id="tr-note"></div>
+<div id="tr-list"></div>
+<div id="tr-msg" class="tr-note" style="margin-top:10px"></div>
+
+<script>
+(function () {
+  const DATA = __TRASHDATA__;
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const size = b => { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; b = b || 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + ' ' + u[i]; };
+  const fecha = t => t ? new Date(t * 1000).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  const quedan = t => { if (!t) return 'nunca'; const d = Math.ceil((t - Date.now() / 1000) / 86400); return d <= 0 ? 'hoy' : 'en ' + d + ' día' + (d === 1 ? '' : 's'); };
+  const msg = (t, ok) => { const m = document.getElementById('tr-msg'); m.textContent = t; m.style.color = ok ? 'var(--ok)' : 'var(--err)'; };
+
+  document.getElementById('tr-note').innerHTML = DATA.days
+    ? `Se eliminan de verdad a los <b>${DATA.days} días</b> de borrarse. Puedes cambiarlo en <a href="/ajustes">Ajustes</a>.`
+    : 'Está configurada para <b>no vaciarse nunca sola</b>: solo se elimina lo que borres aquí a mano. Cámbialo en <a href="/ajustes">Ajustes</a>.';
+
+  const box = document.getElementById('tr-list');
+  if (!DATA.items.length) {
+    box.innerHTML = '<div class="tr-empty">La papelera está vacía.</div>';
+  } else {
+    box.innerHTML = `<div class="tr-wrap"><table class="tr-tbl"><thead><tr><th>Archivo</th><th>Venía de</th>
+      <th class="num">Tamaño</th><th>Borrado</th><th>Se elimina</th><th></th></tr></thead><tbody>${
+      DATA.items.map(it => `<tr>
+        <td><div class="tr-name">${esc(it.name)}</div>${it.sha256 ? `<div class="tr-sub" title="SHA-256">${esc(it.sha256.slice(0, 12))}…</div>` : ''}</td>
+        <td>${esc(it.folder)}</td>
+        <td class="num">${size(it.size)}</td>
+        <td>${fecha(it.deleted_ts)}<div class="tr-sub">por ${esc(it.deleted_by || '—')}</div></td>
+        <td>${quedan(it.purge_ts)}</td>
+        <td class="tr-acts"><button class="mini" data-act="restaurar" data-id="${it.id}">Restaurar</button>
+          <button class="mini danger" data-act="eliminar" data-id="${it.id}" data-name="${esc(it.name)}">Eliminar</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
+  }
+
+  box.addEventListener('click', async ev => {
+    const b = ev.target.closest('button[data-act]'); if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'eliminar' && !confirm('¿Eliminar DEFINITIVAMENTE «' + b.dataset.name + '»? No se podrá recuperar.')) return;
+    b.disabled = true;
+    try {
+      const r = await fetch('/admin/papelera/' + act, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ id: b.dataset.id }) });
+      if (r.status === 403) { const t = await r.text().catch(() => ''); if (/step-up|re-auten/i.test(t)) { location.href = '/elevate?next=/papelera'; return; } }
+      const j = await r.json().catch(() => ({}));
+      if (j.ok) { msg(act === 'restaurar' ? 'Restaurado en su carpeta' + (j.name ? ' como «' + j.name + '»' : '') : 'Eliminado', true); setTimeout(() => location.reload(), 700); }
+      else { b.disabled = false; msg(j.error || 'No se pudo', false); }
+    } catch (e) { b.disabled = false; msg('Error de red', false); }
+  });
+})();
+</script>

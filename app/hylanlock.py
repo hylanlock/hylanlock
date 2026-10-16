@@ -84,6 +84,7 @@ _NAV_ICONS = {
                          '<path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>'),
     "user":     _nav_svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
     "shield":   _nav_svg('<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/>'),
+    "trash":    _nav_svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>'),
     "eye":      _nav_svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
     "list":     _nav_svg('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
     "cog":      _nav_svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1'
@@ -601,7 +602,9 @@ def governance_snapshot():
             f["dup"] = f["hash"] in dups
             f["hash"] = f["hash"][:12] if f["hash"] else None
         del carpeta["_all"]
-    kpi = {"deps": len(deps), "subs": len(todas) - len(deps),
+    papelera = db.trash_list()
+    kpi = {"trash": len(papelera), "trash_bytes": sum(t["size"] or 0 for t in papelera),
+           "deps": len(deps), "subs": len(todas) - len(deps),
            "files": sum(c["count"] for c in todas), "size": sum(c["size"] for c in todas),
            "empty": sum(1 for c in todas if not c["count"]),
            "stale": sum(1 for c in todas if c["stale"]),
@@ -1122,6 +1125,131 @@ def purge_old_parts_if_due():
     purge_old_parts()
 
 
+# ------------------------------------------------------------------ Papelera (borrado blando)
+# "Nunca destruir datos en silencio": borrar MUEVE el archivo (y su .sha256) a <DATA_DIR>/.papelera/<id>/,
+# fuera de las carpetas visibles, y apunta de dónde venía. Solo los administradores borran, restauran y
+# eliminan (decisión de Nicolás, 16-oct). Pasados TRASH_DAYS días se elimina de verdad (0 = nunca), y
+# todo queda en la auditoría. Restaurar lo devuelve a su carpeta original, sin pisar nada.
+TRASH_DIR = os.path.join(DATA_DIR, ".papelera")
+TRASH_KEY = "trash_days"
+TRASH_DEFAULT_DAYS = 30
+TRASH_PURGE_EVERY = 3600
+_last_trash_purge = 0.0
+
+
+def trash_days():
+    try:
+        return max(0, int(db.meta_get(TRASH_KEY, str(TRASH_DEFAULT_DAYS)) or TRASH_DEFAULT_DAYS))
+    except ValueError:
+        return TRASH_DEFAULT_DAYS
+
+
+def _folder_dir(dep, sub=None):
+    """Carpeta real de un departamento o subcarpeta EXISTENTE, o '' si no existe."""
+    if not any(d["slug"] == dep for d in db.list_departments()):
+        return ""
+    if sub and not any(x["slug"] == sub for x in db.list_subfolders(dep)):
+        return ""
+    return sub_dir(dep, sub) if sub else dep_dir(dep)
+
+
+def move_to_trash(dep, sub, name, who):
+    """Manda un archivo a la papelera. Devuelve (id, None) o (None, 'motivo')."""
+    folder = _folder_dir(dep, sub)
+    name = os.path.basename((name or "").replace("\\", "/"))
+    src = os.path.join(folder, name) if folder and name else ""
+    if not src or name.endswith(SHA_EXT) or not os.path.isfile(src):
+        return None, "Ese archivo no existe en esta carpeta."
+    size = os.path.getsize(src)
+    item = db.trash_add(dep, sub, name, size, read_sidecar_hash(src) or None, who)
+    dest_dir = os.path.join(TRASH_DIR, str(item))
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+        os.replace(src, os.path.join(dest_dir, name))
+    except OSError as e:
+        db.trash_remove(item)
+        return None, f"No se pudo mover a la papelera: {e}"
+    if os.path.exists(src + SHA_EXT):
+        try:
+            os.replace(src + SHA_EXT, os.path.join(dest_dir, name + SHA_EXT))
+        except OSError:
+            pass
+    return item, None
+
+
+def restore_from_trash(item_id):
+    """Devuelve un archivo a su carpeta original. (nombre_final, None) o (None, 'motivo')."""
+    it = db.trash_get(item_id)
+    if not it:
+        return None, "No está en la papelera."
+    folder = _folder_dir(it["dept_slug"], it["sub_slug"])
+    if not folder:
+        return None, "La carpeta original ya no existe: vuelve a crearla y restaura después."
+    src = os.path.join(TRASH_DIR, str(item_id), it["name"])
+    if not os.path.isfile(src):
+        return None, "El archivo ya no está en la papelera (¿se eliminó a mano del disco?)."
+    os.makedirs(folder, exist_ok=True)
+    dest = unique_path(folder, it["name"])      # nunca pisa un archivo que exista con ese nombre
+    os.replace(src, dest)
+    if it["sha256"]:
+        write_sidecar_hash(dest, it["sha256"])  # el .sha256 lleva el nombre: se reescribe por si cambió
+    _trash_rmdir(item_id)
+    db.trash_remove(item_id)
+    return os.path.basename(dest), None
+
+
+def purge_trash_item(item_id):
+    """Elimina DE VERDAD un elemento de la papelera. Devuelve el registro o None."""
+    it = db.trash_get(item_id)
+    if not it:
+        return None
+    _trash_rmdir(item_id)
+    db.trash_remove(item_id)
+    return it
+
+
+def _trash_rmdir(item_id):
+    d = os.path.join(TRASH_DIR, str(int(item_id)))
+    try:
+        for f in os.listdir(d):
+            os.remove(os.path.join(d, f))
+        os.rmdir(d)
+    except OSError:
+        pass
+
+
+def trash_purge_expired():
+    """Vaciado automático: elimina lo que lleva más de trash_days() días (0 = nunca)."""
+    days = trash_days()
+    if not days:
+        return 0
+    n = 0
+    for item_id in db.trash_older_than(days):
+        it = purge_trash_item(item_id)
+        if it:
+            n += 1
+            db.log_event("trash_autopurge", user="sistema", origin="local",
+                         detail=f"{db.folder_tag(it['dept_slug'], it['sub_slug'])}{it['name']} "
+                                f"(más de {days} días en la papelera)", bytes=it["size"])
+    return n
+
+
+def trash_purge_if_due():
+    """Con puerta de tiempo (como los trozos incompletos): barato de llamar en cada petición."""
+    global _last_trash_purge
+    now = time.time()
+    if now - _last_trash_purge < TRASH_PURGE_EVERY:
+        return
+    with _purge_lock:
+        if now - _last_trash_purge < TRASH_PURGE_EVERY:
+            return
+        _last_trash_purge = now
+    try:
+        trash_purge_expired()
+    except Exception as e:      # nunca tumbar una petición por la limpieza
+        print(f"  [papelera] error en el vaciado automático: {e}", flush=True)
+
+
 def purge_old_parts():
     import time
     now = time.time()
@@ -1175,6 +1303,7 @@ def _template(name):
 CSS            = "styles.css"
 LAYOUT_PAGE    = "layout.html"      # shell compartido (sidebar + área de contenido)
 PROFILE_PAGE   = "profile.html"     # perfil del usuario: sus permisos + solicitar acceso
+PAPELERA_PAGE  = "papelera.html"    # papelera (solo admins)
 GOBERNANZA_PAGE = "gobernanza.html"  # explorador de gobernanza (gestionar sin leer)
 AJUSTES_PAGE   = "ajustes.html"     # configuración general: tema, idioma, plan, acerca de
 LOGIN_PAGE     = "login.html"
@@ -1618,6 +1747,7 @@ _GUARD_GET = {
     "/upload/status":          {},   # solo autenticado
     "/ajustes":                {},   # Ajustes: autenticado (el bloque de admin se decide dentro)
     "/gobernanza":             {"lan": True, "perm": "folder.oversee"},   # ver estructura SIN leer
+    "/papelera":               {"lan": True, "perm": "users.manage"},     # papelera: solo admins
 }
 _GUARD_POST = {
     "/upload/chunk":           {},
@@ -1639,6 +1769,11 @@ _GUARD_POST = {
     "/admin/config/marca":      {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/exposicion/revisado": {"lan": True, "perm": "users.manage"},   # solo oculta el aviso
     "/admin/user/supervisor":  {"lan": True, "perm": "users.manage", "elevated": True},
+    # Papelera (solo admins): borrar y restaurar se pueden deshacer; eliminar de verdad, no -> step-up.
+    "/admin/papelera/borrar":    {"lan": True, "perm": "users.manage"},
+    "/admin/papelera/restaurar": {"lan": True, "perm": "users.manage"},
+    "/admin/papelera/eliminar":  {"lan": True, "perm": "users.manage", "elevated": True},
+    "/admin/config/papelera":    {"lan": True, "perm": "users.manage", "elevated": True},
     "/admin/licencia":         {"lan": True, "perm": "users.manage"},
     "/perfil/solicitar":       {"lan": True},
     # Despachar avisos sin abrir la carpeta. No hace falta step-up: no concede acceso ni borra
@@ -2197,7 +2332,9 @@ class Handler(BaseHTTPRequestHandler):
                            __UPQS__=upqs,
                            __D_UP__=("block" if can_up else "none"),
                            __D_LS__=("block" if can_ls else "none"),
-                           __CAN_LIST__=("true" if can_ls else "false"))
+                           __CAN_LIST__=("true" if can_ls else "false"),
+                           __CAN_DELETE__=("true" if (can_ls and self._is_admin()) else "false"),
+                           __DEP_SLUG__=json.dumps(dep), __SUB_SLUG__=json.dumps(sub or ""))
 
     def _render_subfolder(self, dep, sub):
         return self._render_folder(dep, sub)
@@ -2229,6 +2366,8 @@ class Handler(BaseHTTPRequestHandler):
         admin = []
         if self._is_admin():                       # users.manage (it_admin)
             admin.append(link("/admin", _NAV_ICONS["shield"], "Administración"))
+        if self._is_admin():
+            admin.append(link("/papelera", _NAV_ICONS["trash"], "Papelera"))
         if self._has("folder.oversee"):            # admins y rol Supervisor
             admin.append(link("/gobernanza", _NAV_ICONS["eye"], "Gobernanza"))
         if self._has("audit.view"):
@@ -2312,6 +2451,19 @@ class Handler(BaseHTTPRequestHandler):
                 'petición desde una IP pública, está expuesto. Detrás de un proxy (Caddy), configura '
                 'HYLANLOCK_TRUSTED_PROXIES para que se vea la IP real.</div>'
                 f'{aviso_cidr}{estado}</div>')
+
+    def _trash_card(self):
+        dias = trash_days()
+        return ('<h2 class="sec">Papelera</h2>'
+                '<div class="aj-card"><div class="ttl">Días en la papelera antes de eliminarse</div>'
+                '<div class="dsc">Lo que borra un administrador va a la <a href="/papelera">Papelera</a> y se puede '
+                'restaurar en su sitio. Pasados estos días se elimina de verdad (queda en la auditoría). '
+                '<b>0 = nunca se vacía sola</b> (útil si guardas documentos legales años).</div>'
+                '<div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">'
+                f'<input id="tr-days" type="number" min="0" max="3650" value="{dias}" style="width:110px">'
+                '<span class="dsc" style="margin:0">días</span>'
+                '<button class="mini" onclick="saveTrash()">Guardar</button>'
+                '<span id="tr-msg" class="dsc" style="margin:0"></span></div></div>')
 
     def _twofa_card(self):
         """Ajustes: política de 2FA para administradores y quién lo tiene ya."""
@@ -2397,7 +2549,8 @@ class Handler(BaseHTTPRequestHandler):
         proximamente = ('<div class="softnote">Próximamente aquí: política de contraseñas y avisos.</div>')
         header = ('<div class="aj-group" style="margin-top:30px">Ajustes de la organización'
                   '<span> · solo administradores, afectan a toda la empresa</span></div>')
-        return header + plan + self._exposure_card() + self._twofa_card() + marca + seguridad + proximamente
+        return (header + plan + self._exposure_card() + self._twofa_card() + self._trash_card()
+                + marca + seguridad + proximamente)
 
     def _shell(self, content_page, active, title, **markers):
         """Envuelve el fragmento 'content_page' con el shell (sidebar + contenido). El fragmento
@@ -2613,6 +2766,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if not path.startswith(API_PREFIX):
             exposure_note(self._client_ip(), path)
+        trash_purge_if_due()          # papelera: vaciado automático, como mucho una vez por hora
 
         # Sonda de salud (Docker/monitorización): SIEMPRE 200 mientras el proceso sirva, sin importar
         # licencia, configuración o red. No expone datos.
@@ -2721,6 +2875,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, self._shell(DEPTS_PAGE, "/departamentos", "Departamentos"))
         elif path == "/perfil":
             self._send(200, self._shell(PROFILE_PAGE, "/perfil", "Mi perfil"))
+        elif path == "/papelera":
+            trash_purge_expired()     # al mirarla, que no salga nada que ya debería haberse ido
+            dias = trash_days()
+            items = db.trash_list()
+            for it in items:
+                ts = _gov_ts(it["deleted_at"])
+                it["deleted_ts"] = ts
+                it["purge_ts"] = (ts + dias * 86400) if (ts and dias) else None
+                it["folder"] = f'{it["dept_slug"]}/{it["sub_slug"]}' if it["sub_slug"] else it["dept_slug"]
+            datos = json.dumps({"items": items, "days": dias}, ensure_ascii=False).replace("</", "<\\/")
+            self._send(200, self._shell(PAPELERA_PAGE, "/papelera", "Papelera", __TRASHDATA__=datos))
         elif path == "/gobernanza":
             # '</' escapado: el JSON va dentro de un <script> y un nombre de carpeta con "</script>"
             # no debe poder cerrarlo.
@@ -3257,6 +3422,57 @@ class Handler(BaseHTTPRequestHandler):
                 db.log_event("user_role", user=me, origin=self._origin(),
                              ip=self._client_ip(), detail=f"{uname} → {role}")
                 self._json({"ok": True})
+        elif path in ("/admin/papelera/borrar", "/admin/papelera/restaurar", "/admin/papelera/eliminar"):
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = (self._current_user() or (None,))[0]
+            if path == "/admin/papelera/borrar":
+                dep = os.path.basename(d.get("dep", [""])[0])
+                sub = os.path.basename(d.get("sub", [""])[0]) or None
+                name = d.get("file", [""])[0]
+                item, err = move_to_trash(dep, sub, name, me)
+                if err:
+                    self._json({"error": err}, 404)
+                else:
+                    db.log_event("file_trash", user=me, origin=self._origin(), ip=self._client_ip(),
+                                 detail=db.folder_tag(dep, sub) + os.path.basename(name))
+                    self._json({"ok": True, "id": item})
+            else:
+                try:
+                    item_id = int(d.get("id", ["0"])[0])
+                except ValueError:
+                    item_id = 0
+                it = db.trash_get(item_id)
+                if not it:
+                    self._json({"error": "No está en la papelera."}, 404)
+                elif path == "/admin/papelera/restaurar":
+                    final, err = restore_from_trash(item_id)
+                    if err:
+                        self._json({"error": err}, 409)
+                    else:
+                        db.log_event("file_restore", user=me, origin=self._origin(), ip=self._client_ip(),
+                                     detail=db.folder_tag(it["dept_slug"], it["sub_slug"]) + final
+                                     + ("" if final == it["name"] else f" (antes {it['name']}: ya había uno igual)"))
+                        self._json({"ok": True, "name": final})
+                else:
+                    purge_trash_item(item_id)
+                    db.log_event("file_purge", user=me, origin=self._origin(), ip=self._client_ip(),
+                                 detail=db.folder_tag(it["dept_slug"], it["sub_slug"]) + it["name"],
+                                 bytes=it["size"])
+                    self._json({"ok": True})
+        elif path == "/admin/config/papelera":
+            d = parse_qs(self._read_body().decode("utf-8", "replace"))
+            me = (self._current_user() or (None,))[0]
+            try:
+                dias = int(d.get("days", [""])[0])
+            except ValueError:
+                dias = -1
+            if not 0 <= dias <= 3650:
+                self._json({"error": "Pon un número de días entre 0 (nunca se vacía sola) y 3650."}, 400)
+            else:
+                db.meta_set(TRASH_KEY, str(dias))
+                db.log_event("config_trash", user=me, origin=self._origin(), ip=self._client_ip(),
+                             detail=f"papelera: {dias} días" if dias else "papelera: nunca se vacía sola")
+                self._json({"ok": True, "days": dias})
         elif path == "/admin/user/supervisor":
             d = parse_qs(self._read_body().decode("utf-8", "replace"))
             me = (self._current_user() or (None,))[0]
@@ -3700,7 +3916,9 @@ class Handler(BaseHTTPRequestHandler):
         me = self._username() or ""
         dep, sub, base = self._api_folder(q.get("folder", [""])[0])
         crudo = (q.get("name", [""])[0] or "")
-        nombre = os.path.basename(crudo.replace("\\", "/"))
+        # Mismo saneado que la web (safe_relpath): fuera rutas, caracteres de control y <>:"|?*.
+        # Antes solo se quitaba la ruta, y en Linux un nombre con HTML se guardaba tal cual.
+        nombre = safe_relpath(os.path.basename(crudo.replace("\\", "/")))[-1] if crudo.strip() else ""
 
         if not dep:
             self._read_body()
@@ -3717,7 +3935,8 @@ class Handler(BaseHTTPRequestHandler):
         if crudo != nombre:
             self._read_body()
             return self._api_error("bad_request",
-                                   "'name' debe ser un nombre de archivo sin rutas ni separadores. "
+                                   "'name' debe ser un nombre de archivo plano: sin rutas ni separadores, "
+                                   "ni los caracteres <>:\"|?* o de control. "
                                    f"Recibido {crudo!r}; usa 'folder' para elegir la carpeta.", 400)
         if nombre.endswith(SHA_EXT):
             self._read_body()

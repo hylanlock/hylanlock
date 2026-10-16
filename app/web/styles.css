@@ -361,6 +361,10 @@ a {
 .dl { text-decoration: none; background: var(--accent-grad); color: #fff;
    border-radius: 10px; padding: 8px 13px; font-size: .85rem; font-weight: 700;
    white-space: nowrap; box-shadow: var(--shadow-accent); }
+/* Borrar (solo admins): discreto, para que no se confunda con descargar. El button global es width:100%. */
+.dl.del { width: auto; margin: 0 0 0 6px; background: transparent; color: var(--err);
+   border: 1px solid color-mix(in srgb, var(--err) 40%, var(--border)); box-shadow: none; padding: 7px 10px; }
+.dl.del:hover { background: color-mix(in srgb, var(--err) 12%, transparent); }
 
 .bar { height: 8px; background: var(--surface-3); border-radius: 6px; overflow: hidden;
    margin-top: 9px; border: 1px solid var(--border); }

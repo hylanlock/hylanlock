@@ -72,6 +72,7 @@
     ['Antiguos', k.old_files, 'archivos de más de ' + Math.round(GOV.old_days / 365) + ' año', k.old_files ? 'warn' : ''],
     ['Duplicados', k.dup_copies, k.dup_copies ? size(k.dup_bytes) + ' en copias repetidas' : 'ninguna copia repetida', k.dup_copies ? 'warn' : ''],
     ['Vacías', k.empty, 'carpetas sin archivos', ''],
+    ['En la papelera', k.trash || 0, k.trash ? size(k.trash_bytes) + ' pendientes de eliminarse' : 'nada borrado', ''],
   ].map(([l, v, s, c]) => `<div class="gv-kpi ${c}"><div class="l">${l}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`).join('');
 
   document.getElementById('gv-global').innerHTML =

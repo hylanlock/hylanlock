@@ -169,6 +169,18 @@ def init_db():
           FOREIGN KEY (subfolder_id) REFERENCES subfolders(id) ON DELETE CASCADE
         );
 
+        -- ---- Papelera: archivos borrados (blando). El archivo vive en <DATA_DIR>/.papelera/<id>/ ----
+        CREATE TABLE IF NOT EXISTS trash (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          dept_slug   TEXT NOT NULL,              -- carpeta de origen (para restaurar en su sitio)
+          sub_slug    TEXT,                       -- NULL = raíz del departamento
+          name        TEXT NOT NULL,              -- nombre original
+          size        INTEGER,
+          sha256      TEXT,
+          deleted_by  TEXT,
+          deleted_at  TEXT NOT NULL
+        );
+
         -- ---- Novedades: hasta cuándo ha mirado cada usuario cada carpeta ----
         -- No se duplican notificaciones: las novedades se DERIVAN de la auditoría (tabla events),
         -- que ya registra cada subida con carpeta, autor y hora. Aquí solo se guarda la marca de
@@ -1139,6 +1151,49 @@ def list_buzon_links(dept_slug, sub_slug):
                  "expires_at": ea, "one_shot": bool(osf)} for i, l, t, cb, ea, osf in rows]
     except Exception:
         return []
+
+
+# ------------------------------------------------------------------ Papelera
+def trash_add(dept_slug, sub_slug, name, size, sha256, deleted_by):
+    """Apunta un archivo en la papelera y devuelve su id (la carpeta física es .papelera/<id>)."""
+    with _lock:
+        c = _connect()
+        cur = c.execute("INSERT INTO trash (dept_slug, sub_slug, name, size, sha256, deleted_by, deleted_at) "
+                        "VALUES (?,?,?,?,?,?,?)", (dept_slug, sub_slug or None, name, size, sha256,
+                                                   deleted_by, datetime.now().strftime(_TS)))
+        c.commit()
+        return cur.lastrowid
+
+
+_TRASH_COLS = ("id", "dept_slug", "sub_slug", "name", "size", "sha256", "deleted_by", "deleted_at")
+
+
+def trash_list():
+    """Todo lo que hay en la papelera, lo más reciente primero."""
+    with _lock:
+        rows = _connect().execute("SELECT " + ",".join(_TRASH_COLS) + " FROM trash ORDER BY id DESC").fetchall()
+    return [dict(zip(_TRASH_COLS, r)) for r in rows]
+
+
+def trash_get(item_id):
+    with _lock:
+        r = _connect().execute("SELECT " + ",".join(_TRASH_COLS) + " FROM trash WHERE id=?",
+                               (item_id,)).fetchone()
+    return dict(zip(_TRASH_COLS, r)) if r else None
+
+
+def trash_remove(item_id):
+    with _lock:
+        c = _connect()
+        c.execute("DELETE FROM trash WHERE id=?", (item_id,))
+        c.commit()
+
+
+def trash_older_than(days):
+    """Ids borrados hace más de 'days' días (para el vaciado automático)."""
+    corte = (datetime.now() - timedelta(days=days)).strftime(_TS)
+    with _lock:
+        return [r[0] for r in _connect().execute("SELECT id FROM trash WHERE deleted_at < ?", (corte,))]
 
 
 def revoke_buzon_link(link_id):

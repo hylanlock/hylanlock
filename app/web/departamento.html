@@ -89,7 +89,7 @@
   function render() {
     list.innerHTML = ''; items.forEach((it, idx) => {
       const d = document.createElement('div'); d.className = 'item';
-      d.innerHTML = `<div class="name">${it.path}</div><div class="meta" id="m${idx}">${fmt(it.file.size)}</div>
+      d.innerHTML = `<div class="name">${esc(it.path)}</div><div class="meta" id="m${idx}">${fmt(it.file.size)}</div>
   <div class="bar"><span id="b${idx}"></span></div>`; list.appendChild(d);
     }); sendBtn.disabled = items.length === 0;
   }
@@ -166,13 +166,14 @@
   function icon() {
     return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
   }
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
   let allFiles = [];
   function rowHtml(f) {
-    const sh = f.sha256 ? `<div class="fh" title="SHA-256: ${f.sha256}&#10;(clic para copiar)"
-    onclick="hylCopiar('${f.sha256}', this)">${f.sha256.slice(0, 12)}…</div>` : '';
+    const sh = f.sha256 ? `<div class="fh" title="SHA-256: ${esc(f.sha256)}&#10;(clic para copiar)"
+    onclick="hylCopiar('${esc(f.sha256)}', this)">${esc(f.sha256.slice(0, 12))}…</div>` : '';
     return `<div class="frow"><span class="fic">${icon(f.name)}</span>
-  <span class="fn">${f.name}${sh}</span><span class="fs">${fmt(f.size)}</span>
-  <a class="dl" href="__DLBASE__/download?file=${encodeURIComponent(f.name)}" download="${f.name}" title="Descargar" aria-label="Descargar"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M5 21h14"/></svg></a></div>`;
+  <span class="fn">${esc(f.name)}${sh}</span><span class="fs">${fmt(f.size)}</span>
+  <a class="dl" href="__DLBASE__/download?file=${encodeURIComponent(f.name)}" download="${esc(f.name)}" title="Descargar" aria-label="Descargar"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M5 21h14"/></svg></a>${CAN_DELETE ? `<button class="dl del" type="button" data-del="${esc(f.name)}" title="Mandar a la papelera" aria-label="Borrar"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg></button>` : ''}</div>`;
   }
   // Filtro por nombre en el navegador: instantáneo y sin recargar (la lista ya está cargada).
   function renderList() {
@@ -194,5 +195,20 @@
   document.getElementById('fsearch').addEventListener('input', renderList);
   // Solo se pide el listado si el usuario tiene 'files.list'; si no, ni se intenta (daría 403).
   const CAN_LIST = __CAN_LIST__;
+  // Borrar (solo administradores): manda el archivo a la Papelera, desde donde se puede restaurar.
+  const CAN_DELETE = __CAN_DELETE__, DEP = __DEP_SLUG__, SUB = __SUB_SLUG__;
+  document.getElementById('flist').addEventListener('click', async ev => {
+    const b = ev.target.closest('button[data-del]'); if (!b) return;
+    const name = b.dataset.del;
+    if (!confirm('¿Mandar «' + name + '» a la papelera? Se podrá restaurar desde Papelera.')) return;
+    b.disabled = true;
+    try {
+      const r = await fetch('/admin/papelera/borrar', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ dep: DEP, sub: SUB, file: name }) });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { b.disabled = false; alert(j.error || 'No se pudo borrar'); return; }
+      refreshList();
+    } catch (e) { b.disabled = false; alert('Error de red'); }
+  });
   if (CAN_LIST) { refreshList(); setInterval(refreshList, 4000); }
 </script>

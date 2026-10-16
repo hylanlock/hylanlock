@@ -92,6 +92,20 @@ __ADMINBLOCK__
     } catch (e) { msg.style.color = 'var(--err)'; msg.textContent = 'Error de red.'; }
   }
 
+  // Días que se guarda lo borrado en la papelera (solo admin).
+  async function saveTrash() {
+    const msg = document.getElementById('tr-msg'); if (!msg) return;
+    msg.style.color = 'var(--muted)'; msg.textContent = 'Guardando…';
+    try {
+      const r = await fetch('/admin/config/papelera', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ days: document.getElementById('tr-days').value }) });
+      if (r.status === 403) { const t = await r.text().catch(() => ''); if (/step-up|re-auten/i.test(t)) { location.href = '/elevate?next=/ajustes'; return; } }
+      const j = await r.json().catch(() => ({}));
+      if (j.ok) { msg.style.color = 'var(--ok)'; msg.textContent = j.days ? 'Guardado · se vacía a los ' + j.days + ' días' : 'Guardado · nunca se vacía sola'; }
+      else { msg.style.color = 'var(--err)'; msg.textContent = j.error || 'No se pudo guardar'; }
+    } catch (e) { msg.style.color = 'var(--err)'; msg.textContent = 'Error de red'; }
+  }
+
   // Política de 2FA para administradores (solo admin; el checkbox solo existe si el servidor lo pintó).
   async function saveTwofa(el) {
     const msg = document.getElementById('tf-msg'); if (!msg) return;

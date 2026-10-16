@@ -46,13 +46,14 @@
 </div>
 
 <script>
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
   async function load() {
     try {
       const r = await fetch('/api/departamentos'); const ds = await r.json();
       const box = document.getElementById('dlist');
       if (!ds.length) { box.innerHTML = '<div class="empty">No tienes departamentos asignados. Habla con tu administrador.</div>'; }
       else box.innerHTML = ds.map(d => `<a class="dcard" href="/dep/${encodeURIComponent(d.slug)}">
-  <div class="ic"></div><div class="dn">${d.name}</div>
+  <div class="ic"></div><div class="dn">${esc(d.name)}</div>
   <div class="dr">${d.role === 'head' ? 'Jefe de departamento' : (d.role === 'all' ? 'Acceso total' : 'Miembro')}</div></a>`).join('');
     } catch (e) { }
   }
@@ -66,7 +67,7 @@
       document.getElementById('slist').innerHTML = ss.map(s => {
         const que = s.can_list ? (s.can_upload ? 'Ver y subir' : 'Solo lectura') : 'Buzón de entrega · solo dejar';
         return `<a class="dcard" href="/dep/${encodeURIComponent(s.dept_slug)}/sub/${encodeURIComponent(s.slug)}">
-  <div class="ic">${s.can_list ? '' : ''}</div><div class="dn">${s.name}</div>
+  <div class="ic">${s.can_list ? '' : ''}</div><div class="dn">${esc(s.name)}</div>
   <div class="dr">${s.dept_name} · ${que}</div></a>`;
       }).join('');
     } catch (e) { }

@@ -80,6 +80,42 @@ class TestBasico(unittest.TestCase):
         self.assertEqual(h.get("X-Frame-Options"), "DENY")
 
 
+class TestNombresSeguros(unittest.TestCase):
+    """Un nombre de archivo con HTML no debe guardarse tal cual (subida por API) ni pintarse sin escapar."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.inst = Instance()
+        cls.inst.db()
+        db.create_user("admin", "pass-admin-123", scope="admin")
+        db.create_department("Ventas")
+        db.create_service_account("erp")
+        db.add_membership("erp", "ventas")
+        cls.token = db.create_device_token("erp", "integración de pruebas")
+        cls.inst.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.inst.stop()
+
+    def test_api_sanea_el_nombre(self):
+        malo = '<img src=x onerror="alert(1)">factura.pdf'
+        s, body, _ = self.inst.client().post(
+            "/api/v1/upload?folder=ventas&name=" + urllib.parse.quote(malo), b"contenido",
+            {"Authorization": "Bearer " + self.token})
+        self.assertEqual(s, 400, body)                    # se rechaza y se dice (contrato de máquina)
+        self.assertIn("caracteres", body)
+        self.assertEqual(os.listdir(self.inst.path("departamentos", "ventas")), [])   # no se guardó nada
+        s, body, _ = self.inst.client().post("/api/v1/upload?folder=ventas&name=factura.pdf", b"contenido",
+                                             {"Authorization": "Bearer " + self.token})
+        self.assertEqual((s, json.loads(body)["name"]), (201, "factura.pdf"))          # un nombre normal, sí
+
+    def test_plantillas_escapan_los_nombres(self):
+        for pagina, trozo in (("departamento.html", "${esc(f.name)}"), ("departamentos.html", "${esc(d.name)}")):
+            with open(os.path.join(APP, "web", pagina), encoding="utf-8") as f:
+                self.assertIn(trozo, f.read(), pagina)
+
+
 class TestBuzon(unittest.TestCase):
     """Enlace de buzón: un externo deja un archivo sin cuenta; queda auditado y el enlace se cierra."""
 
@@ -235,6 +271,108 @@ class TestGobernanza(unittest.TestCase):
         self.assertEqual(pepe.get("/gobernanza")[0], 200)
         adm.post_csrf("/admin/user/supervisor", {"username": "pepe", "on": ""}, "/admin")
         self.assertEqual(pepe.get("/gobernanza")[0], 403)
+
+
+class TestPapelera(unittest.TestCase):
+    """Borrado blando: solo admins borran/restauran/eliminan; restaurar vuelve a su sitio sin pisar nada."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.inst = Instance()
+        cls.inst.db()
+        db.create_user("admin", "pass-admin-123", scope="admin")
+        db.create_user("ana", "pass-ana-456", scope="member")
+        db.create_department("Ventas")
+        db.add_membership("ana", "ventas", "head")          # jefa: tiene files.delete, pero NO borra (solo admins)
+        for n in ("a.pdf", "b.pdf", "c.pdf", "d.pdf", "e.pdf"):
+            cls.put(n)
+        cls.inst.start()
+        cls.adm = cls.inst.client()
+        cls.adm.login("admin", "pass-admin-123")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.inst.stop()
+
+    @classmethod
+    def put(cls, name, data=None):
+        p = cls.inst.path("departamentos", "ventas", name)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        data = data or name.encode() * 10
+        with open(p, "wb") as f:
+            f.write(data)
+        with open(p + ".sha256", "w", newline="") as f:
+            f.write(f"{hashlib.sha256(data).hexdigest()} *{name}\n")
+
+    def carpeta(self):
+        return sorted(os.listdir(self.inst.path("departamentos", "ventas")))
+
+    def borrar(self, name, client=None):
+        return (client or self.adm).post_csrf("/admin/papelera/borrar", {"dep": "ventas", "file": name}, "/papelera")
+
+    def papelera(self):
+        body = self.adm.get("/papelera")[1]
+        return json.loads(re.search(r"const DATA = (\{.*?\});\n", body, re.S).group(1))["items"]
+
+    def item(self, name):
+        return next(i for i in self.papelera() if i["name"] == name)
+
+    def test_solo_admins(self):
+        ana = self.inst.client()
+        ana.login("ana", "pass-ana-456")
+        self.assertIn("const CAN_DELETE = false", ana.get("/dep/ventas")[1])
+        self.assertIn("const CAN_DELETE = true", self.adm.get("/dep/ventas")[1])
+        self.assertEqual(self.borrar("a.pdf", ana)[0], 403)
+        self.assertEqual(ana.get("/papelera")[0], 403)
+        self.assertIn("a.pdf", self.carpeta())
+
+    def test_borrar_y_restaurar_sin_pisar(self):
+        self.assertEqual(self.borrar("b.pdf")[0], 200)
+        self.assertNotIn("b.pdf", self.carpeta())
+        self.assertNotIn("b.pdf.sha256", self.carpeta())             # la huella se va con él
+        it = self.item("b.pdf")
+        self.assertEqual((it["folder"], it["deleted_by"]), ("ventas", "admin"))
+        self.put("b.pdf", b"otro distinto")                         # mientras, alguien sube otro b.pdf
+        s, body, _ = self.adm.post_csrf("/admin/papelera/restaurar", {"id": it["id"]}, "/papelera")
+        self.assertEqual((s, json.loads(body)["name"]), (200, "b (1).pdf"))
+        self.assertIn("b (1).pdf", self.carpeta())
+        with open(self.inst.path("departamentos", "ventas", "b.pdf"), "rb") as f:
+            self.assertEqual(f.read(), b"otro distinto")             # el nuevo no se ha tocado
+        with open(self.inst.path("departamentos", "ventas", "b (1).pdf.sha256")) as f:
+            self.assertIn("*b (1).pdf", f.read())                    # sidecar reescrito con el nombre nuevo
+        self.assertEqual(events(self.inst, "file_trash", "file_restore")[-1][0], "file_restore")
+
+    def test_eliminar_definitivo(self):
+        self.borrar("c.pdf")
+        it = self.item("c.pdf")
+        self.assertEqual(self.adm.post_csrf("/admin/papelera/eliminar", {"id": it["id"]}, "/papelera")[0], 200)
+        self.assertNotIn("c.pdf", [i["name"] for i in self.papelera()])
+        self.assertFalse(os.path.exists(self.inst.path(".papelera", str(it["id"]))))
+        self.assertIn("c.pdf", events(self.inst, "file_purge")[-1][3])
+
+    def test_vaciado_automatico_y_cero_es_nunca(self):
+        def envejecer(name):
+            con = sqlite3.connect(self.inst.path("hylanlock.db"))
+            con.execute("UPDATE trash SET deleted_at='2000-01-01 00:00:00' WHERE name=?", (name,))
+            con.commit()
+            con.close()
+        self.borrar("d.pdf")
+        envejecer("d.pdf")
+        self.assertNotIn("d.pdf", [i["name"] for i in self.papelera()])     # con 30 días: eliminado
+        self.assertIn("d.pdf", events(self.inst, "trash_autopurge")[-1][3])
+        self.assertEqual(self.adm.post_csrf("/admin/config/papelera", {"days": "0"}, "/ajustes")[0], 200)
+        try:
+            self.borrar("e.pdf")
+            envejecer("e.pdf")
+            self.assertIn("e.pdf", [i["name"] for i in self.papelera()])     # con 0: nunca se vacía sola
+        finally:
+            self.adm.post_csrf("/admin/config/papelera", {"days": "30"}, "/ajustes")
+
+    def test_no_se_sale_de_la_carpeta(self):
+        for malo in ("../../hylanlock.db", "..\\..\\license.key", "a.pdf.sha256", "no-existe.pdf"):
+            self.assertEqual(self.borrar(malo)[0], 404, malo)
+        self.assertTrue(os.path.exists(self.inst.path("hylanlock.db")))
+        self.assertTrue(os.path.exists(self.inst.path("license.key")))
 
 
 class TestDosPasos(unittest.TestCase):

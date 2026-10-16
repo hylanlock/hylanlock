@@ -154,8 +154,9 @@ curl -X POST -H "Authorization: Bearer $CLAVE" \
 - **`X-SHA256` (recomendado):** si lo mandas y no coincide con lo que llega, **no se guarda nada**
   y responde `422`. Es la verificación extremo a extremo.
 - **Nombre repetido:** no se sobrescribe nunca; el servidor añade un sufijo (`factura (2).pdf`).
-- **`name` debe ser un nombre plano**, sin `/` ni `\`. Si mandas una ruta se rechaza con `400` en
-  vez de renombrarla en silencio: así no crees haber escrito algo distinto de lo que tienes.
+- **`name` debe ser un nombre plano**, sin `/` ni `\`, ni los caracteres `< > : " | ? *` o de control
+  (los mismos que limpia la web). Si no lo es, se rechaza con `400` en vez de renombrarlo en silencio:
+  así no crees haber escrito algo distinto de lo que tienes.
 - **Tamaño máximo por petición:** 512 MB (`HYLANLOCK_API_MAX_UPLOAD_MB`).
 - El archivo se escribe **a disco a trozos** y se mueve de forma atómica al terminar: nunca queda
   un fichero a medias con el nombre bueno.
