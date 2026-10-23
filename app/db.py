@@ -25,6 +25,7 @@ import hashlib
 import secrets
 import sqlite3
 import threading
+import time
 from datetime import datetime, timedelta
 
 _PBKDF2_ITER = 200_000
@@ -1834,6 +1835,16 @@ if __name__ == "__main__":
             print(f"2FA desactivado para '{args[2]}'. Ya puede entrar solo con su contraseña.")
         else:
             print(f"'{args[2]}' no existe o no tenía el 2FA activado.")
+    elif len(args) >= 2 and args[0] == "backup-done":
+        # db.py backup-done <archivo> [tamaño] [destino]  -> lo llama scripts/backup.sh al terminar bien.
+        # Así la app puede decirle al admin cuándo fue la última copia (Ajustes → Copias de seguridad).
+        init_db()
+        info = {"ts": time.time(), "file": args[1], "size": args[2] if len(args) > 2 else "",
+                "dest": args[3] if len(args) > 3 else ""}
+        meta_set("last_backup", json.dumps(info))
+        log_event("backup_ok", user="copia automática", origin="local",
+                  detail=f"{info['file']} ({info['size']}) en {info['dest']}")
+        print("ok")
     elif len(args) >= 2 and args[0] == "backup":
         # db.py backup <ruta_destino.db>  -> copia consistente de la BD
         init_db()
@@ -1841,5 +1852,5 @@ if __name__ == "__main__":
     else:
         print("uso: db.py log <tipo> [detalle] [bytes]  |  db.py show [N]  |  "
               "db.py user add <usr> <pass> <scope>  |  db.py user list  |  db.py user del <usr>  |  "
-              "db.py user reset-2fa <usr>  |  "
+              "db.py user reset-2fa <usr>  |  db.py backup-done <archivo> [tamaño] [destino]  |  "
               "db.py backup <destino.db>")

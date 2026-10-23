@@ -273,6 +273,37 @@ class TestGobernanza(unittest.TestCase):
         self.assertEqual(pepe.get("/gobernanza")[0], 403)
 
 
+class TestCopiasDeSeguridad(unittest.TestCase):
+    """Ajustes dice cuándo fue la última copia (la apunta scripts/backup.sh con db.py backup-done)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.inst = Instance()
+        cls.inst.db()
+        db.create_user("admin", "pass-admin-123", scope="admin")
+        cls.inst.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.inst.stop()
+
+    def test_sin_copia_reciente_y_antigua(self):
+        adm = self.inst.client()
+        adm.login("admin", "pass-admin-123")
+        self.assertIn("No consta ninguna copia", adm.get("/ajustes")[1])
+        env = {**os.environ, "HYLANLOCK_DATA_DIR": self.inst.dir, "PYTHONIOENCODING": "utf-8"}
+        env.pop("HYLANLOCK_DB_PATH", None)
+        subprocess.run([sys.executable, "db.py", "backup-done", "hylanlock-20261018-030000.tar.gz", "12M", "/backups"],
+                       cwd=APP, env=env, capture_output=True, check=True)
+        body = adm.get("/ajustes")[1]
+        self.assertIn("Última copia", body)
+        self.assertIn("hylanlock-20261018-030000.tar.gz", body)
+        self.assertNotIn("Hace demasiado", body)
+        db.meta_set("last_backup", json.dumps({"ts": time.time() - 5 * 86400, "file": "vieja.tar.gz"}))
+        self.assertIn("Hace demasiado", adm.get("/ajustes")[1])
+        self.assertEqual(events(self.inst, "backup_ok")[-1][1], "copia automática")
+
+
 class TestPapelera(unittest.TestCase):
     """Borrado blando: solo admins borran/restauran/eliminan; restaurar vuelve a su sitio sin pisar nada."""
 

@@ -35,6 +35,13 @@ Opciones (variables de entorno):
 | `HYLANLOCK_BACKUP_KEEP` | `14`              | Cuántos backups conservar |
 | `HYLANLOCK_VOLUME`      | `<carpeta>_hylanlock_data` | Nombre del volumen (Compose le pone el prefijo del proyecto) |
 
+## ¿Funciona la copia? Míralo en Ajustes
+
+Cada vez que `backup.sh` termina bien, lo apunta en la app (`python db.py backup-done …`). En
+**Ajustes → Copias de seguridad** el administrador ve cuándo fue la última, qué archivo y dónde, y un
+**aviso en rojo si tiene más de 48 horas** (la copia programada ha dejado de funcionar). Si nunca se ha
+hecho ninguna, también lo dice. Queda además en la auditoría (`backup_ok`).
+
 ## Restaurar
 
 ```bash

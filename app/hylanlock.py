@@ -1130,6 +1130,7 @@ def purge_old_parts_if_due():
 # fuera de las carpetas visibles, y apunta de dónde venía. Solo los administradores borran, restauran y
 # eliminan (decisión de Nicolás, 16-oct). Pasados TRASH_DAYS días se elimina de verdad (0 = nunca), y
 # todo queda en la auditoría. Restaurar lo devuelve a su carpeta original, sin pisar nada.
+BACKUP_WARN_HOURS = 48          # Ajustes avisa en rojo si la última copia es más antigua
 TRASH_DIR = os.path.join(DATA_DIR, ".papelera")
 TRASH_KEY = "trash_days"
 TRASH_DEFAULT_DAYS = 30
@@ -2452,6 +2453,30 @@ class Handler(BaseHTTPRequestHandler):
                 'HYLANLOCK_TRUSTED_PROXIES para que se vea la IP real.</div>'
                 f'{aviso_cidr}{estado}</div>')
 
+    def _backup_card(self):
+        """Ajustes: cuándo fue la última copia de seguridad (la apunta scripts/backup.sh)."""
+        try:
+            info = json.loads(db.meta_get("last_backup", "") or "{}")
+        except ValueError:
+            info = {}
+        guia = ('Se hacen con <code>scripts/backup.sh</code> (programado con cron) y conviene llevarlas '
+                '<b>fuera de este servidor</b> (NAS u otro equipo). Guía: <code>docs/BACKUPS.md</code>.')
+        if not info.get("ts"):
+            estado = ('<div class="dsc" style="color:var(--warn);margin-top:8px"><b>No consta ninguna copia de '
+                      'seguridad.</b> Si el disco falla, se pierde todo.</div>')
+        else:
+            horas = (time.time() - float(info["ts"])) / 3600
+            color = "var(--ok)" if horas <= BACKUP_WARN_HOURS else "var(--err)"
+            aviso = "" if horas <= BACKUP_WARN_HOURS else " <b>Hace demasiado: revisa que la copia programada funciona.</b>"
+            estado = (f'<div class="dsc" style="color:{color};margin-top:8px">Última copia {_hace(float(info["ts"]))}: '
+                      f'<code>{html.escape(str(info.get("file", "")))}</code>'
+                      + (f' ({html.escape(str(info.get("size", "")))})' if info.get("size") else "")
+                      + (f' en <code>{html.escape(str(info.get("dest", "")))}</code>' if info.get("dest") else "")
+                      + f'.{aviso}</div>')
+        return ('<h2 class="sec">Copias de seguridad</h2>'
+                f'<div class="aj-card"><div class="ttl">¿Está protegido si falla el disco?</div>'
+                f'<div class="dsc">{guia}</div>{estado}</div>')
+
     def _trash_card(self):
         dias = trash_days()
         return ('<h2 class="sec">Papelera</h2>'
@@ -2549,7 +2574,7 @@ class Handler(BaseHTTPRequestHandler):
         proximamente = ('<div class="softnote">Próximamente aquí: política de contraseñas y avisos.</div>')
         header = ('<div class="aj-group" style="margin-top:30px">Ajustes de la organización'
                   '<span> · solo administradores, afectan a toda la empresa</span></div>')
-        return (header + plan + self._exposure_card() + self._twofa_card() + self._trash_card()
+        return (header + plan + self._backup_card() + self._exposure_card() + self._twofa_card() + self._trash_card()
                 + marca + seguridad + proximamente)
 
     def _shell(self, content_page, active, title, **markers):

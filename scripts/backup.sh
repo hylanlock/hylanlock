@@ -37,6 +37,10 @@ docker run --rm \
     --exclude=hylanlock.db-shm \
     .
 
+# Apuntar en la app que la copia ha ido bien (Ajustes → Copias de seguridad la muestra).
+SIZE="$(du -h "$OUT_ABS/hylanlock-$STAMP.tar.gz" | cut -f1)"
+docker compose exec -T hylanlock python db.py backup-done "hylanlock-$STAMP.tar.gz" "$SIZE" "$OUT_ABS" >/dev/null ||   echo "  (aviso: no pude apuntar la copia en la app; la copia SÍ está hecha)"
+
 echo "[3/3] Rotación (conservar los $KEEP más recientes)…"
 ls -1t "$OUT_ABS"/hylanlock-*.tar.gz 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r old; do
   rm -f "$old"
